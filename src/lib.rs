@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Context, Result};

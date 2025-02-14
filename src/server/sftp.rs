@@ -22,7 +22,7 @@ use russh_sftp::protocol::{
 };
 use thiserror_ext::AsReport;
 use tracing::{event, Level};
-use whirlwind::{mapref::MapRef, ShardMap};
+use whirlwind::ShardMap;
 
 use crate::{
     vfs,
