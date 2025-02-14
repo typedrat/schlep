@@ -1,41 +1,48 @@
-use crate::config::Config;
-use crate::vfs;
+use std::{
+    path::Path,
+    result::Result,
+    str::FromStr,
+    sync::{Arc, LazyLock},
+};
+
 use ahash::RandomState;
 use async_trait::async_trait;
-use base64ct::{Base64, Encoding};
+use camino::{Utf8Path, Utf8PathBuf};
 use russh_sftp::protocol::{
-    Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode, Version,
+    Attrs,
+    Data,
+    File,
+    FileAttributes,
+    Handle,
+    Name,
+    OpenFlags,
+    Status,
+    StatusCode,
+    Version,
 };
-use rustix::fs::{AtFlags, Mode, OFlags, RawDir, ResolveFlags, Stat, StatExt};
-use rustix::io::Errno;
-use sha2::{Digest, Sha256};
-use std::ffi::OsStr;
-use std::fs;
-use std::io::SeekFrom;
-use std::os::fd::OwnedFd;
-use std::os::unix::prelude::OsStrExt;
-use std::path::{Path, PathBuf};
-use std::result::Result;
-use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use thiserror_ext::AsReport;
 use tracing::{event, Level};
-use whirlwind::ShardMap;
+use whirlwind::{mapref::MapRef, ShardMap};
+
+use crate::{
+    vfs,
+    vfs::{Metadata, PathMatch, VfsInstance, VfsSet},
+};
 
 pub struct SftpSession {
-    config: Config,
-    fs: vfs::Root,
+    cwd_path: Utf8PathBuf,
+    vfs_set: VfsSet,
     version: Option<u32>,
-    open_files: ShardMap<String, (PathBuf, OwnedFd), RandomState>,
-    open_dirs: ShardMap<String, (PathBuf, OwnedFd), RandomState>,
+    readdir_performed: ShardMap<vfs::Handle, bool, RandomState>,
 }
 
 impl SftpSession {
-    pub fn new(config: Config, fs: vfs::Root) -> Self {
+    pub fn new(cwd_path: Utf8PathBuf, vfs_set: VfsSet) -> Self {
         Self {
-            config,
-            fs,
+            cwd_path,
+            vfs_set,
             version: None,
-            open_files: ShardMap::with_hasher(Default::default()),
-            open_dirs: ShardMap::with_hasher(Default::default()),
+            readdir_performed: ShardMap::with_hasher(RandomState::default()),
         }
     }
 }
@@ -72,69 +79,37 @@ impl russh_sftp::server::Handler for SftpSession {
         id: u32,
         path: String,
         pflags: OpenFlags,
-        attrs: FileAttributes,
+        _attrs: FileAttributes,
     ) -> Result<Handle, Self::Error> {
-        let handle_hash = Sha256::digest(path.as_bytes());
-        let handle = format!("file_{}", Base64::encode_string(handle_hash.as_slice()));
-        let path = PathBuf::from(path);
-
-        let mut oflags = OFlags::CLOEXEC;
-        let mode = attrs.permissions.map_or(Mode::empty(), Mode::from);
-
-        if pflags.contains(OpenFlags::READ) && pflags.contains(OpenFlags::WRITE) {
-            oflags |= OFlags::RDWR
-        } else if pflags.contains(OpenFlags::READ) {
-            oflags |= OFlags::RDONLY
-        } else if pflags.contains(OpenFlags::WRITE) {
-            oflags |= OFlags::WRONLY
-        }
-
-        if pflags.contains(OpenFlags::APPEND) {
-            oflags |= OFlags::APPEND
-        }
-
-        if pflags.contains(OpenFlags::CREATE) {
-            oflags |= OFlags::CREATE
-        }
-
-        if pflags.contains(OpenFlags::TRUNCATE) {
-            oflags |= OFlags::TRUNC
-        }
-
-        if pflags.contains(OpenFlags::EXCLUDE) {
-            oflags |= OFlags::EXCL
-        }
-
-        let dir_fd = self
-            .fs
-            .open_fd(&path, oflags, mode)
-            .map_err(|_| StatusCode::Failure)?;
-
-        self.open_files.insert(handle.clone(), (path, dir_fd)).await;
-
-        Ok(Handle { id, handle })
+        path_match(&self.vfs_set, &path, async |vfs, relative_path| {
+            if let Ok(handle) = vfs.open(relative_path, vfs::OpenFlags::from(pflags)).await {
+                Ok(Handle {
+                    id,
+                    handle: handle.to_string(),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
+        })
+        .await
     }
 
     async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
-        if handle.starts_with("dir") {
-            self.open_dirs.remove(&handle).await;
-            Ok(Status {
-                id,
-                status_code: StatusCode::Ok,
-                error_message: String::new(),
-                language_tag: String::new(),
-            })
-        } else if handle.starts_with("file") {
-            self.open_files.remove(&handle).await;
-            Ok(Status {
-                id,
-                status_code: StatusCode::Ok,
-                error_message: String::new(),
-                language_tag: String::new(),
-            })
-        } else {
-            Err(StatusCode::Failure)
-        }
+        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            self.readdir_performed.remove(&handle).await;
+
+            if let Ok(()) = vfs.close(handle).await {
+                Ok(Status {
+                    id,
+                    status_code: StatusCode::Ok,
+                    error_message: String::new(),
+                    language_tag: String::new(),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
+        })
+        .await
     }
     async fn read(
         &mut self,
@@ -143,32 +118,14 @@ impl russh_sftp::server::Handler for SftpSession {
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
-        let owned_fd = if let Some(map_ref) = self.open_files.get(&handle).await {
-            let (_, file_fd) = map_ref.value();
-            let owned_fd = file_fd.try_clone().map_err(|_| StatusCode::Failure)?;
-
-            owned_fd
-        } else {
-            return Err(StatusCode::Failure);
-        };
-        let mut owned_file = tokio::fs::File::from(std::fs::File::from(owned_fd));
-
-        owned_file
-            .seek(SeekFrom::Start(offset))
-            .await
-            .map_err(|_| StatusCode::Failure)?;
-
-        let mut data = Vec::with_capacity(len as usize);
-        let n = owned_file
-            .read_buf(&mut data)
-            .await
-            .map_err(|_| StatusCode::Failure)?;
-
-        if n > 0 {
-            Ok(Data { id, data })
-        } else {
-            Err(StatusCode::Eof)
-        }
+        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            match vfs.read(&handle, offset as usize, len as usize).await {
+                Ok(Some(data)) => Ok(Data { id, data }),
+                Ok(None) => Err(StatusCode::Eof),
+                Err(_) => Err(StatusCode::Failure),
+            }
+        })
+        .await
     }
 
     async fn write(
@@ -178,224 +135,202 @@ impl russh_sftp::server::Handler for SftpSession {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
-        let owned_fd = if let Some(map_ref) = self.open_files.get(&handle).await {
-            let (_, file_fd) = map_ref.value();
-            let owned_fd = file_fd.try_clone().map_err(|_| StatusCode::Failure)?;
-
-            owned_fd
-        } else {
-            return Err(StatusCode::Failure);
-        };
-        let mut owned_file = tokio::fs::File::from(std::fs::File::from(owned_fd));
-
-        owned_file
-            .seek(SeekFrom::Start(offset))
-            .await
-            .map_err(|_| StatusCode::Failure)?;
-
-        owned_file
-            .write_all(data.as_slice())
-            .await
-            .map_err(|_| StatusCode::Failure)?;
-
-        Ok(Status {
-            id,
-            status_code: StatusCode::Ok,
-            error_message: String::new(),
-            language_tag: String::new(),
+        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            if let Ok(()) = vfs.write(&handle, offset as usize, data.as_slice()).await {
+                Ok(Status {
+                    id,
+                    status_code: StatusCode::Ok,
+                    error_message: String::new(),
+                    language_tag: String::new(),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
         })
+        .await
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
-        let path = PathBuf::from(path);
-
-        let fd = self
-            .fs
-            .open_fd(
-                &path,
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|_| StatusCode::Failure)?;
-        let stat = rustix::fs::fstat(fd).map_err(|_| StatusCode::Failure)?;
-
-        Ok(Attrs {
-            id,
-            attrs: stat_to_attrs(&stat),
+        path_match(&self.vfs_set, &path, async |vfs, relative_path| {
+            if let Ok(metadata) = vfs.stat_link(relative_path).await {
+                Ok(Attrs {
+                    id,
+                    attrs: Metadata::into(metadata),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
         })
+        .await
     }
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
-        if let Some(map_ref) = self.open_files.get(&handle).await {
-            let (_, fd) = map_ref.value();
-            let stat = rustix::fs::fstat(fd).map_err(|_| StatusCode::Failure)?;
-
-            Ok(Attrs {
-                id,
-                attrs: stat_to_attrs(&stat),
-            })
-        } else {
-            Err(StatusCode::Failure)
-        }
+        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            if let Ok(metadata) = vfs.stat_fd(&handle).await {
+                Ok(Attrs {
+                    id,
+                    attrs: Metadata::into(metadata),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
+        })
+        .await
     }
 
     async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
-        let handle_hash = Sha256::digest(path.as_bytes());
-        let handle = format!("dir_{}", Base64::encode_string(handle_hash.as_slice()));
-        let path = PathBuf::from(path);
-
-        let dir_fd = self
-            .fs
-            .open_fd(
-                &path,
-                OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC,
-                Mode::empty(),
-            )
-            .map_err(|_| StatusCode::Failure)?;
-
-        self.open_dirs.insert(handle.clone(), (path, dir_fd)).await;
-
-        Ok(Handle { id, handle })
+        path_match(&self.vfs_set, &path, async |vfs, relative_path| {
+            if let Ok(dir_handle) = vfs.open_dir(relative_path).await {
+                Ok(Handle {
+                    id,
+                    handle: dir_handle.to_string(),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
+        })
+        .await
     }
 
     async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
-        if let Some(map_ref) = self.open_dirs.get(&handle).await {
-            let (path, dir_fd) = map_ref.value();
-            let mut files = Vec::new();
+        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            let readdir_performed = self
+                .readdir_performed
+                .get(&handle)
+                .await
+                .map_or(false, |x| *x.value());
 
-            let mut buf = Vec::with_capacity(8192);
-            'read: loop {
-                'resize: {
-                    let mut iter = RawDir::new(dir_fd, buf.spare_capacity_mut());
+            if !readdir_performed {
+                if let Ok(dirs) = vfs.read_dir(&handle).await {
+                    let dirs = dirs
+                        .iter()
+                        .map(|(path, metadata)| File::new(path.as_str(), Metadata::into(*metadata)))
+                        .collect();
 
-                    while let Some(entry) = iter.next() {
-                        let entry = match entry {
-                            Ok(entry) => entry,
-                            Err(Errno::INVAL) => break 'resize,
-                            Err(_) => return Err(StatusCode::Failure),
-                        };
+                    self.readdir_performed.insert(handle, true).await;
 
-                        let filename_cstr = OsStr::from_bytes(entry.file_name().to_bytes());
-                        if filename_cstr == "." || filename_cstr == ".." {
-                            continue;
-                        }
-
-                        let filename = Path::new(filename_cstr);
-                        let file_fd = match self.fs.open_fd(
-                            &*path.join(filename),
-                            OFlags::RDONLY | OFlags::CLOEXEC,
-                            Mode::empty(),
-                        ) {
-                            Ok(fd) => fd,
-                            Err(_) => continue,
-                        };
-
-                        let file_stat = match rustix::fs::fstat(file_fd) {
-                            Ok(stat) => stat,
-                            Err(_) => continue,
-                        };
-
-                        files.push(File::new(
-                            filename_cstr.to_string_lossy(),
-                            stat_to_attrs(&file_stat),
-                        ))
-                    }
-
-                    break 'read;
+                    Ok(Name { id, files: dirs })
+                } else {
+                    Err(StatusCode::Failure)
                 }
+            } else {
+                Err(StatusCode::Eof)
             }
-
-            Ok(Name { id, files })
-        } else {
-            Err(StatusCode::Failure)
-        }
+        })
+        .await
     }
 
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
-        let _ = self
-            .fs
-            .remove(Path::new(&filename))
-            .map_err(|_| StatusCode::Failure)?;
-
-        Ok(Status {
-            id,
-            status_code: StatusCode::Ok,
-            error_message: String::new(),
-            language_tag: String::new(),
-        })
+        path_match(
+            &self.vfs_set,
+            &filename,
+            async |vfs, relative_path| match vfs.remove_file(relative_path).await {
+                Ok(()) => Ok(Status {
+                    id,
+                    status_code: StatusCode::Ok,
+                    error_message: String::new(),
+                    language_tag: String::new(),
+                }),
+                Err(err) => Ok(Status {
+                    id,
+                    status_code: StatusCode::Failure,
+                    error_message: err.as_report().to_string(),
+                    language_tag: LANGUAGE_TAG.clone(),
+                }),
+            },
+        )
+        .await
     }
 
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
-        let _ = self
-            .fs
-            .remove(Path::new(&path))
-            .map_err(|_| StatusCode::Failure)?;
-
-        Ok(Status {
-            id,
-            status_code: StatusCode::Ok,
-            error_message: String::new(),
-            language_tag: String::new(),
+        path_match(&self.vfs_set, &path, async |vfs, relative_path| {
+            match vfs.remove_dir(relative_path).await {
+                Ok(()) => Ok(Status {
+                    id,
+                    status_code: StatusCode::Ok,
+                    error_message: String::new(),
+                    language_tag: String::new(),
+                }),
+                Err(err) => Ok(Status {
+                    id,
+                    status_code: StatusCode::Failure,
+                    error_message: err.as_report().to_string(),
+                    language_tag: LANGUAGE_TAG.clone(),
+                }),
+            }
         })
+        .await
     }
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
-        if let Ok(resolved) = self.fs.absolute_path(Path::new(&path)) {
-            let resolved_str = resolved.to_str().unwrap();
+        use path_absolutize::Absolutize;
 
-            Ok(Name {
-                id,
-                files: vec![File::dummy(resolved_str)],
-            })
-        } else {
-            Err(StatusCode::Failure)
-        }
-    }
+        let path = Path::new(&path)
+            .absolutize_from(self.cwd_path.as_std_path())
+            .map_err(|_| StatusCode::Failure)?
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or(StatusCode::Failure)?;
 
-    async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
-        let path = PathBuf::from(path);
-
-        let fd = self
-            .fs
-            .open_fd(&path, OFlags::RDONLY | OFlags::CLOEXEC, Mode::empty())
-            .map_err(|_| StatusCode::Failure)?;
-        let stat = rustix::fs::fstat(fd).map_err(|_| StatusCode::Failure)?;
-
-        Ok(Attrs {
+        Ok(Name {
             id,
-            attrs: stat_to_attrs(&stat),
+            files: vec![File::dummy(path)],
         })
     }
 
-    async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
-        if let Ok(resolved) = self.fs.readlink(Path::new(&path)) {
-            let resolved_str = resolved.to_str().unwrap();
+    async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
+        path_match(&self.vfs_set, &path, async |vfs, relative_path| {
+            if let Ok(metadata) = vfs.stat(relative_path).await {
+                Ok(Attrs {
+                    id,
+                    attrs: Metadata::into(metadata),
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
+        })
+        .await
+    }
 
-            Ok(Name {
-                id,
-                files: vec![File::dummy(resolved_str)],
-            })
-        } else {
-            Err(StatusCode::Failure)
-        }
+    async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        let id = id;
+
+        path_match(&self.vfs_set, &path, async |vfs, relative_path| {
+            if let Ok(link_contents) = vfs.readlink(relative_path).await {
+                Ok(Name {
+                    id,
+                    files: vec![File::dummy(link_contents)],
+                })
+            } else {
+                Err(StatusCode::Failure)
+            }
+        })
+        .await
     }
 }
 
-fn stat_to_attrs(stat: &Stat) -> FileAttributes {
-    use users::{get_group_by_gid, get_user_by_uid};
+async fn handle_match<T, F>(vfs_set: &VfsSet, handle: String, fun: F) -> Result<T, StatusCode>
+where
+    F: AsyncFnOnce(Arc<VfsInstance>, vfs::Handle) -> Result<T, StatusCode>,
+{
+    let handle = vfs::Handle::from_str(&handle).map_err(|_| StatusCode::BadMessage)?;
 
-    let mut attrs = FileAttributes::default();
-
-    attrs.size = Some(stat.st_size as u64);
-    attrs.uid = Some(stat.st_uid);
-    attrs.user =
-        get_user_by_uid(stat.st_uid).and_then(|user| user.name().to_str().map(String::from));
-    attrs.gid = Some(stat.st_gid);
-    attrs.group =
-        get_group_by_gid(stat.st_gid).and_then(|group| group.name().to_str().map(String::from));
-    attrs.permissions = Some(stat.st_mode);
-    attrs.atime = Some(stat.st_atime as u32);
-    attrs.mtime = Some(stat.st_mtime as u32);
-
-    attrs
+    if let Some(vfs) = vfs_set.resolve_handle(&handle).await {
+        fun(vfs, handle).await
+    } else {
+        Err(StatusCode::NoSuchFile)
+    }
 }
+
+async fn path_match<T, F>(vfs_set: &VfsSet, path: &str, fun: F) -> Result<T, StatusCode>
+where
+    F: AsyncFnOnce(Arc<VfsInstance>, &Utf8Path) -> Result<T, StatusCode>,
+{
+    if let Some(PathMatch { vfs, relative_path }) = vfs_set.resolve_path(Utf8Path::new(path)) {
+        fun(vfs, relative_path.as_path()).await
+    } else {
+        Err(StatusCode::NoSuchFile)
+    }
+}
+
+static LANGUAGE_TAG: LazyLock<String> = LazyLock::new(|| "en".to_string());

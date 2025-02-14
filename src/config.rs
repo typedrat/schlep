@@ -2,12 +2,11 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use figment::{
-    providers::{Env, Format, Yaml},
+    providers::{Env, Format, Toml},
     Figment,
 };
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
-use url::Url;
 
 #[serde_inline_default]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -21,7 +20,8 @@ pub struct SftpConfig {
     pub port: u16,
 
     #[serde_inline_default(Vec::new())]
-    /// Path to an OpenSSH-formatted private key for the host to advertise to clients.
+    /// Path to an OpenSSH-formatted private key for the host to advertise to
+    /// clients.
     pub private_host_keys: Vec<PathBuf>,
 }
 
@@ -29,7 +29,7 @@ pub struct SftpConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LdapConfig {
     /// LDAP URL to connect to for user backend.
-    pub url: Url,
+    pub url: String,
     #[serde_inline_default(false)]
     /// Skip verifying the TLS certificate for the LDAP connection.
     pub tls_no_verify: bool,
@@ -54,7 +54,7 @@ pub struct LdapConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FsConfig {
     /// The root directory to serve.
-    pub root_dir: PathBuf,
+    pub root_dir: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -67,7 +67,7 @@ pub struct Config {
 impl Config {
     pub fn load() -> Result<Config> {
         let config: Config = Figment::new()
-            .merge(Yaml::file("schlep.yaml"))
+            .merge(Toml::file("schlep.toml"))
             .merge(Env::prefixed("SCHLEP_").split("__"))
             .extract()?;
 

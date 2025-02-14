@@ -4,36 +4,42 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ahash = "~0.8.11"
-anyhow = "~1.0.95"
-async-trait = "~0.1.86"
+ahash = "0.8.11"
+anyhow = "1.0.95"
+async-trait = "0.1.86"
 base64ct = { version = "1.6.0", features = ["alloc", "std"] }
-cap-std = { version = "3.4.2", features = ["arf-strings", "arf_strings", "fs_utf8"] }
-figment = { version = "~0.10.19", features = ["env", "parking_lot", "yaml"] }
-ldap3 = { version = "~0.11.5", default-features = false, features = [
+binrw = "0.14.1"
+bitflags = { version = "2.8", features = ["serde", "bytemuck"] }
+camino = { version = "1.1.9", features = ["serde1"] }
+cap-fs-ext = { version = "3.4.2", features = ["fs_utf8"] }
+cap-primitives = "3.4.2"
+cap-std = { version = "3.4.2", features = ["fs_utf8"] }
+figment = { version = "0.10.19", features = ["env", "parking_lot", "toml"] }
+fs-set-times = "0.20.2"
+ldap3 = { version = "0.11.5", default-features = false, features = [
     "tls-rustls",
 ] }
-mimalloc = "~0.1.43"
-path-absolutize = "~3.1.1"
-rand = "~0.8.5"
-russh = "~0.50.0"
-russh-sftp = "~2.0.8"
-rustix = { version = "~0.38.44", features = ["fs", "procfs", "system"] }
-scc = "~2.3.3"
-semver = { version = "~1.0.25", features = ["serde"] }
-serde = { version = "~1.0.217", features = ["derive"] }
-serde-inline-default = "~0.2.3"
-sha2 = "~0.10.8"
-show-option = "~0.2.0"
-thiserror = "~2.0.11"
-tokio = { version = "~1.43.0", features = ["full"] }
-tracing = "~0.1.41"
-tracing-subscriber = { version = "~0.3.19", features = [
+mimalloc = "0.1.43"
+path-absolutize = "3.1.1"
+pathdiff = { version = "0.2.3", features = ["camino"] }
+rand = "0.8.5"
+russh = "0.50.0"
+russh-sftp = "2.0.8"
+rustix = { version = "^0.38.0", features = ["fs"] }
+scc = "2.3.3"
+serde = { version = "1.0.217", features = ["derive"] }
+serde-inline-default = "0.2.3"
+sha2 = "0.10.8"
+show-option = "0.2.0"
+thiserror = "2.0.11"
+thiserror-ext = "0.2.1"
+tokio = { version = "1.43.0", features = ["full"] }
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = [
     "time",
     "local-time",
     "smallvec",
     "parking_lot",
 ] }
-url = { version = "~2.3.1", features = ["serde"] }
-users = "0.11.0"
+trait_enum = "0.5.0"
 whirlwind = "0.1.1"

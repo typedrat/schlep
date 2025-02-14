@@ -1,26 +1,33 @@
-use super::sftp::SftpSession;
-use crate::config::Config;
-use crate::vfs;
+use std::net::SocketAddr;
+
 use ahash::RandomState;
 use anyhow::{bail, Context, Result};
+use camino::Utf8PathBuf;
 use ldap3::{Ldap, Scope, SearchEntry};
-use russh::keys::ssh_key;
-use russh::server::{Auth, Msg, Session};
-use russh::{Channel, ChannelId};
+use russh::{
+    keys::ssh_key,
+    server::{Auth, Msg, Session},
+    Channel,
+    ChannelId,
+};
 use scc::hash_map;
-use std::net::SocketAddr;
 use tracing::{event, Level};
+
+use super::sftp::SftpSession;
+use crate::{config::Config, vfs::VfsSet};
 
 pub struct SshServer {
     config: Config,
     ldap_handle: Ldap,
+    vfs_set: VfsSet,
 }
 
 impl SshServer {
-    pub fn new(config: Config, ldap_handle: Ldap) -> Self {
+    pub fn new(config: Config, ldap_handle: Ldap, vfs_set: VfsSet) -> Self {
         Self {
             config,
             ldap_handle,
+            vfs_set,
         }
     }
 }
@@ -33,7 +40,11 @@ impl russh::server::Server for SshServer {
             event!(Level::INFO, ?sock_addr, "Client connected");
         }
 
-        SshSession::new(self.config.clone(), self.ldap_handle.clone())
+        SshSession::new(
+            self.config.clone(),
+            self.ldap_handle.clone(),
+            self.vfs_set.clone(),
+        )
     }
 
     fn handle_session_error(&mut self, error: <Self::Handler as russh::server::Handler>::Error) {
@@ -44,14 +55,16 @@ impl russh::server::Server for SshServer {
 pub struct SshSession {
     config: Config,
     ldap_handle: Ldap,
+    vfs_set: VfsSet,
     clients: hash_map::HashMap<ChannelId, Channel<Msg>, RandomState>,
 }
 
 impl SshSession {
-    pub fn new(config: Config, ldap_handle: Ldap) -> Self {
+    pub fn new(config: Config, ldap_handle: Ldap, vfs_set: VfsSet) -> Self {
         Self {
             config,
             ldap_handle,
+            vfs_set,
             clients: hash_map::HashMap::with_hasher(RandomState::default()),
         }
     }
@@ -158,8 +171,8 @@ impl russh::server::Handler for SshSession {
             let channel = self.get_channel(channel_id).await;
             session.channel_success(channel_id)?;
 
-            let fs_root = vfs::Root::new(self.config.fs.root_dir.as_path())?;
-            let sftp = SftpSession::new(self.config.clone(), fs_root);
+            let cwd: Utf8PathBuf = Utf8PathBuf::from("/");
+            let sftp = SftpSession::new(cwd, self.vfs_set.clone());
             let channel_stream = channel?.into_stream();
             russh_sftp::server::run(channel_stream, sftp).await
         } else {
