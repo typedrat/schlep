@@ -1,11 +1,4 @@
-use std::{
-    ffi::OsStr,
-    io::SeekFrom,
-    os::{fd::AsFd, unix::prelude::OsStrExt},
-    path::{Path, PathBuf},
-    sync::Arc,
-    time::SystemTime,
-};
+use std::{io::SeekFrom, path::PathBuf, sync::Arc, time::SystemTime};
 
 use async_trait::async_trait;
 use base64ct::{Base64, Encoding};
@@ -16,11 +9,8 @@ use cap_std::{
     fs_utf8::{Dir, File},
 };
 use rand::{rngs::OsRng, Rng};
-use russh_sftp::protocol::FileAttributes;
-use rustix::{fs::RawDir, io::Errno};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
-use tracing::{event, Level};
 use whirlwind::ShardMap;
 
 use super::{options::*, Error, Handle, HandleType, Vfs};
