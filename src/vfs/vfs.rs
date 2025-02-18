@@ -9,7 +9,10 @@ use std::{
 use ahash::HashMap;
 use async_trait::async_trait;
 use camino::{Utf8Path, Utf8PathBuf};
-use thiserror::Error as ThisError;
+use digest::OutputSizeUser;
+use generic_array::GenericArray;
+use md5::Md5;
+use sha1::Sha1;
 use trait_enum::trait_enum;
 
 use super::{local_dir::LocalDir, Error, FsMetadata, Metadata, OpenFlags};
@@ -48,12 +51,9 @@ pub trait Vfs: Send {
     async fn read_dir(&self, handle: &Handle) -> Result<Vec<(Utf8PathBuf, Metadata)>, Error>;
     async fn write(&self, handle: &Handle, offset: usize, data: &[u8]) -> Result<(), Error>;
     async fn stat_fd(&self, handle: &Handle) -> Result<Metadata, Error>;
-    async fn statvfs_fd(&self, handle: &Handle) -> Result<FsMetadata, Error>;
     async fn sync_fd(&self, handle: &Handle) -> Result<(), Error>;
 
     async fn rename(&self, from: &Utf8Path, to: &Utf8Path) -> Result<(), Error>;
-
-    async fn posix_rename(&self, from: &Utf8Path, to: &Utf8Path) -> Result<(), Error>;
 
     async fn stat(&self, path: &Utf8Path) -> Result<Metadata, Error>;
     async fn stat_link(&self, path: &Utf8Path) -> Result<Metadata, Error>;
@@ -63,7 +63,17 @@ pub trait Vfs: Send {
 
     async fn symlink(&self, path: &Utf8Path, target: &Utf8Path) -> Result<(), Error>;
 
+    async fn md5sum(
+        &self,
+        path: &Utf8Path,
+    ) -> Result<GenericArray<u8, <Md5 as OutputSizeUser>::OutputSize>, Error>;
+    async fn sha1sum(
+        &self,
+        path: &Utf8Path,
+    ) -> Result<GenericArray<u8, <Sha1 as OutputSizeUser>::OutputSize>, Error>;
+
     async fn readlink(&self, path: &Utf8Path) -> Result<Utf8PathBuf, Error>;
+    async fn mkdir(&self, path: &Utf8Path) -> Result<(), Error>;
     async fn remove_file(&self, path: &Utf8Path) -> Result<(), Error>;
     async fn remove_dir(&self, path: &Utf8Path) -> Result<(), Error>;
 
@@ -95,7 +105,7 @@ pub trait Vfs: Send {
 /// the other requirement, this means that no two instantiations of types
 /// implementing [`Vfs`] in the same program may produce handles that render out
 /// to the same string. This is because the SFTP protocol references open files
-/// and directories purely by their handles, so the server needs to be able to
+/// and directories purely by their handles, so the sftp needs to be able to
 /// use these handles to determine what underlying VFS they belong to.
 ///
 /// It is essential that these raw `vfs_handle`s must be 250 bytes or less, due
@@ -162,7 +172,7 @@ impl Display for Handle {
 
 /// Errors that can arise while parsing a [`Handle`] from its [`String`]
 /// representation.
-#[derive(ThisError, Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum HandleParseError {
     #[error("invalid handle: {0}")]
     InvalidHandle(String),
@@ -302,7 +312,7 @@ impl VfsSetBuilder {
         Ok(self)
     }
 
-    /// Build a [`VfsSet`] that can be provided to a server that uses the VFS
+    /// Build a [`VfsSet`] that can be provided to a sftp that uses the VFS
     /// interface.
     pub fn build(&self) -> VfsSet {
         VfsSet::new(self.vfs_map.clone())

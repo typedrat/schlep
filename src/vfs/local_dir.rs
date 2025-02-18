@@ -1,4 +1,10 @@
-use std::{io::SeekFrom, path::PathBuf, sync::Arc, time::SystemTime};
+use std::{
+    io,
+    io::{SeekFrom, Write},
+    path::PathBuf,
+    sync::Arc,
+    time::SystemTime,
+};
 
 use async_trait::async_trait;
 use base64ct::{Base64, Encoding};
@@ -8,7 +14,11 @@ use cap_std::{
     ambient_authority,
     fs_utf8::{Dir, File},
 };
-use rand::{rngs::OsRng, Rng};
+use digest::OutputSizeUser;
+use generic_array::GenericArray;
+use md5::Md5;
+use rand::Rng;
+use sha1::Sha1;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use whirlwind::ShardMap;
@@ -68,6 +78,34 @@ impl LocalDir {
             None => Err(Error::FileNotFound),
         }
     }
+
+    async fn hash<Hash: Digest + Write>(
+        &self,
+        path: &Utf8Path,
+    ) -> Result<GenericArray<u8, <Hash as OutputSizeUser>::OutputSize>, Error> {
+        let root_dir = self
+            .root_dir
+            .try_clone()
+            .into_io_error("failed to get root directory handle")?;
+        let path = path.to_owned();
+
+        let hash = tokio::task::spawn_blocking(move || {
+            let mut file = root_dir.open(path).into_io_error("failed opening file")?;
+            let mut hasher = Hash::new();
+            io::copy(&mut file, &mut hasher).into_io_error("failed to hash file")?;
+            Ok(hasher.finalize())
+        })
+        .await
+        .unwrap_or_else(|e| {
+            if e.is_panic() {
+                std::panic::resume_unwind(e.into_panic());
+            }
+
+            panic!("task failed: {e}");
+        })?;
+
+        Ok(hash)
+    }
 }
 
 #[async_trait]
@@ -92,7 +130,7 @@ impl Vfs for LocalDir {
 
         let mut hasher = Sha256::new();
         let mut salt = [0u8; 32];
-        OsRng.fill(&mut salt);
+        rand::rng().fill(&mut salt);
 
         hasher.update(self.vfs_path.as_str());
         hasher.update(path.as_str());
@@ -125,7 +163,7 @@ impl Vfs for LocalDir {
 
         let mut hasher = Sha256::new();
         let mut salt = [0u8; 32];
-        OsRng.fill(&mut salt);
+        rand::rng().fill(&mut salt);
 
         hasher.update(self.vfs_path.as_str());
         hasher.update(path.as_str());
@@ -286,10 +324,6 @@ impl Vfs for LocalDir {
         }
     }
 
-    async fn statvfs_fd(&self, handle: &Handle) -> Result<FsMetadata, Error> {
-        todo!()
-    }
-
     async fn sync_fd(&self, handle: &Handle) -> Result<(), Error> {
         if handle.handle_type() == HandleType::File {
             let file = self.get_file(handle).await?;
@@ -303,11 +337,28 @@ impl Vfs for LocalDir {
     }
 
     async fn rename(&self, from: &Utf8Path, to: &Utf8Path) -> Result<(), Error> {
-        todo!()
-    }
+        let root_dir = self
+            .root_dir
+            .try_clone()
+            .into_io_error("failed to get root directory handle")?;
+        let from = from.to_owned();
+        let to = to.to_owned();
 
-    async fn posix_rename(&self, from: &Utf8Path, to: &Utf8Path) -> Result<(), Error> {
-        todo!()
+        tokio::task::spawn_blocking(move || {
+            root_dir
+                .rename(from, &root_dir, to)
+                .into_io_error("failed to rename file")
+        })
+        .await
+        .unwrap_or_else(|e| {
+            if e.is_panic() {
+                std::panic::resume_unwind(e.into_panic());
+            }
+
+            panic!("task failed: {e}");
+        })?;
+
+        Ok(())
     }
 
     async fn stat(&self, path: &Utf8Path) -> Result<Metadata, Error> {
@@ -359,7 +410,29 @@ impl Vfs for LocalDir {
     }
 
     async fn statvfs(&self, path: &Utf8Path) -> Result<FsMetadata, Error> {
-        todo!()
+        let root_dir = self
+            .root_dir
+            .try_clone()
+            .into_io_error("failed to get root directory handle")?;
+        let path = path.to_owned();
+
+        let fs_metadata = tokio::task::spawn_blocking(move || {
+            let file = root_dir.open(&path).into_io_error("failed to open file")?;
+            let fs_metadata = rustix::fs::fstatvfs(&file).map_err(|err| {
+                io::Error::from(err).into_io_error("failed to get filesystem metadata")
+            })?;
+            Ok(fs_metadata)
+        })
+        .await
+        .unwrap_or_else(|e| {
+            if e.is_panic() {
+                std::panic::resume_unwind(e.into_panic());
+            }
+
+            panic!("task failed: {e}");
+        })?;
+
+        Ok(fs_metadata.into())
     }
 
     async fn hardlink(&self, source: &Utf8Path, target: &Utf8Path) -> Result<(), Error> {
@@ -413,6 +486,20 @@ impl Vfs for LocalDir {
         Ok(())
     }
 
+    async fn md5sum(
+        &self,
+        path: &Utf8Path,
+    ) -> Result<GenericArray<u8, <Md5 as OutputSizeUser>::OutputSize>, Error> {
+        self.hash::<Md5>(path).await
+    }
+
+    async fn sha1sum(
+        &self,
+        path: &Utf8Path,
+    ) -> Result<GenericArray<u8, <Sha1 as OutputSizeUser>::OutputSize>, Error> {
+        self.hash::<Sha1>(path).await
+    }
+
     async fn readlink(&self, path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
         let root_dir = self
             .root_dir
@@ -449,6 +536,30 @@ impl Vfs for LocalDir {
         })?;
 
         Ok(link_contents)
+    }
+
+    async fn mkdir(&self, path: &Utf8Path) -> Result<(), Error> {
+        let root_dir = self
+            .root_dir
+            .try_clone()
+            .into_io_error("failed to get root directory handle")?;
+        let path = path.to_owned();
+
+        tokio::task::spawn_blocking(move || {
+            root_dir
+                .create_dir(path)
+                .into_io_error("failed to create directory")
+        })
+        .await
+        .unwrap_or_else(|e| {
+            if e.is_panic() {
+                std::panic::resume_unwind(e.into_panic());
+            }
+
+            panic!("task failed: {e}");
+        })?;
+
+        Ok(())
     }
 
     async fn remove_file(&self, path: &Utf8Path) -> Result<(), Error> {

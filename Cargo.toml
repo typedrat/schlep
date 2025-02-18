@@ -8,29 +8,39 @@ ahash = "0.8.11"
 anyhow = "1.0.95"
 async-trait = "0.1.86"
 base64ct = { version = "1.6.0", features = ["alloc", "std"] }
-binrw = "0.14.1"
+bb8 = "0.9.0"
+bb8-redis = "0.21.0"
 bitflags = { version = "2.8", features = ["serde", "bytemuck"] }
 camino = { version = "1.1.9", features = ["serde1"] }
 cap-fs-ext = { version = "3.4.2", features = ["fs_utf8"] }
 cap-primitives = "3.4.2"
 cap-std = { version = "3.4.2", features = ["fs_utf8"] }
+derive_more = { version = "2.0.1", features = ["debug"] }
+digest = "0.10.7"
 figment = { version = "0.10.19", features = ["env", "parking_lot", "toml"] }
 fs-set-times = "0.20.2"
-ldap3 = { version = "0.11.5", default-features = false, features = [
-    "tls-rustls",
-] }
+generic-array = { version = "0.14.7" }
+humantime-serde = "1.1.1"
+ldap3 = { version = "0.11.5", default-features = false, features = ["tls-rustls"] }
+md-5 = "0.10.6"
 mimalloc = "0.1.43"
 path-absolutize = "3.1.1"
 pathdiff = { version = "0.2.3", features = ["camino"] }
-rand = "0.8.5"
-russh = "0.50.0"
+rand = "0.9.0"
+redis = { version = "0.29.0", features = ["aio", "ahash", "tokio-comp", "tokio-rustls-comp", "json"] }
+redis-macros = { version = "0.5.0", default-features = false, features = ["macros"] }
+russh = "0.50.2"
 russh-sftp = "2.0.8"
-rustix = { version = "^0.38.0", features = ["fs"] }
-scc = "2.3.3"
+rustix = { version = "0.38.44", features = ["fs"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde-inline-default = "0.2.3"
+serde_json = "1.0.138"
+sha1 = "0.10.6"
 sha2 = "0.10.8"
-show-option = "0.2.0"
+shlex = "1.3.0"
+ssh-key = { version = "=0.6.9", features = [
+    "serde",
+], package = "internal-russh-forked-ssh-key" }
 thiserror = "2.0.11"
 thiserror-ext = "0.2.1"
 tokio = { version = "1.43.0", features = ["full"] }
@@ -42,4 +52,5 @@ tracing-subscriber = { version = "0.3.19", features = [
     "parking_lot",
 ] }
 trait_enum = "0.5.0"
+url = { version = "2.5.4", features = ["serde"] }
 whirlwind = "0.1.1"

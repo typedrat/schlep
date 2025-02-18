@@ -8,16 +8,52 @@ use bitflags::{bitflags, bitflags_match};
 use cap_primitives::fs::MetadataExt as _;
 use cap_std::fs::OpenOptions;
 use russh_sftp::protocol::FileAttributes;
+use rustix::fs::{StatVfs, StatVfsMountFlags};
 use tracing::{event, Level};
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Metadata {
-    pub size: Option<u64>,
-    pub atime: Option<SystemTime>,
-    pub mtime: Option<SystemTime>,
+    pub(super) size: Option<u64>,
+    pub(super) atime: Option<SystemTime>,
+    pub(super) mtime: Option<SystemTime>,
+    pub(super) is_directory: bool,
 }
 
-impl From<russh_sftp::protocol::FileAttributes> for Metadata {
+impl Metadata {
+    pub fn size(&self) -> Option<u64> {
+        self.size
+    }
+
+    pub fn atime(&self) -> Option<SystemTime> {
+        self.atime
+    }
+
+    pub fn mtime(&self) -> Option<SystemTime> {
+        self.atime
+    }
+
+    pub fn is_directory(&self) -> bool {
+        self.is_directory
+    }
+
+    pub fn file_attrs(&self, file_mode: u32, dir_mode: u32) -> FileAttributes {
+        let mut attrs = FileAttributes::default();
+
+        attrs.size = self.size;
+        attrs.atime = self.atime.and_then(from_system_time);
+        attrs.mtime = self.mtime.and_then(from_system_time);
+
+        if self.is_directory {
+            attrs.permissions = Some(0o004_0_000 | dir_mode)
+        } else {
+            attrs.permissions = Some(0o010_0_000 | file_mode)
+        }
+
+        attrs
+    }
+}
+
+impl From<FileAttributes> for Metadata {
     fn from(value: FileAttributes) -> Self {
         fn to_system_time(x: u32) -> SystemTime {
             SystemTime::UNIX_EPOCH + Duration::from_secs(u64::from(x))
@@ -33,42 +69,14 @@ impl From<russh_sftp::protocol::FileAttributes> for Metadata {
     }
 }
 
-impl From<Metadata> for russh_sftp::protocol::FileAttributes {
-    fn from(metadata: Metadata) -> Self {
-        fn from_system_time(system_time: SystemTime) -> Option<u32> {
-            if let Ok(duration) = system_time.duration_since(UNIX_EPOCH) {
-                Some(duration.as_secs() as u32)
-            } else {
-                event!(Level::DEBUG, "system time before UNIX EPOCH");
-                None
-            }
-        }
-
-        let mut attrs = FileAttributes::default();
-
-        attrs.size = metadata.size;
-        attrs.atime = metadata.atime.and_then(from_system_time);
-        attrs.mtime = metadata.mtime.and_then(from_system_time);
-
-        attrs
-    }
-}
-
 impl From<std::fs::Metadata> for Metadata {
     fn from(value: std::fs::Metadata) -> Self {
-        fn to_system_time(x: i64) -> SystemTime {
-            if x < 0 {
-                SystemTime::UNIX_EPOCH - Duration::from_secs(-x as u64)
-            } else {
-                SystemTime::UNIX_EPOCH + Duration::from_secs(x as u64)
-            }
-        }
-
         let mut out = Metadata::default();
 
         out.size = Some(value.size());
         out.atime = Some(to_system_time(value.atime()));
         out.mtime = Some(to_system_time(value.mtime()));
+        out.is_directory = value.is_dir();
 
         out
     }
@@ -76,21 +84,31 @@ impl From<std::fs::Metadata> for Metadata {
 
 impl From<cap_std::fs::Metadata> for Metadata {
     fn from(value: cap_std::fs::Metadata) -> Self {
-        fn to_system_time(x: i64) -> SystemTime {
-            if x < 0 {
-                SystemTime::UNIX_EPOCH - Duration::from_secs(-x as u64)
-            } else {
-                SystemTime::UNIX_EPOCH + Duration::from_secs(x as u64)
-            }
-        }
-
         let mut out = Metadata::default();
 
         out.size = Some(value.size());
         out.atime = Some(to_system_time(value.atime()));
         out.mtime = Some(to_system_time(value.mtime()));
+        out.is_directory = value.is_dir();
 
         out
+    }
+}
+
+fn from_system_time(system_time: SystemTime) -> Option<u32> {
+    if let Ok(duration) = system_time.duration_since(UNIX_EPOCH) {
+        Some(duration.as_secs() as u32)
+    } else {
+        event!(Level::DEBUG, "system time before UNIX EPOCH");
+        None
+    }
+}
+
+fn to_system_time(x: i64) -> SystemTime {
+    if x < 0 {
+        SystemTime::UNIX_EPOCH - Duration::from_secs(-x as u64)
+    } else {
+        SystemTime::UNIX_EPOCH + Duration::from_secs(x as u64)
     }
 }
 
@@ -105,6 +123,20 @@ pub struct FsMetadata {
     pub free_files: u64,
     pub read_only: bool,
     pub max_length: u64,
+}
+
+impl From<StatVfs> for FsMetadata {
+    fn from(stat: StatVfs) -> Self {
+        FsMetadata {
+            block_size: stat.f_frsize,
+            num_blocks: stat.f_blocks,
+            free_blocks: stat.f_bfree,
+            num_files: stat.f_files,
+            free_files: stat.f_ffree,
+            read_only: stat.f_flag.contains(StatVfsMountFlags::RDONLY),
+            max_length: stat.f_namemax,
+        }
+    }
 }
 
 /// The simplified lowest-common-denominator of file-opening types that the VFS
