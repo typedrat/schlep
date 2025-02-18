@@ -1,11 +1,14 @@
 use bb8::Pool;
 use bb8_redis::RedisConnectionManager;
 use redis::RedisError;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename = "redis_config")]
 pub struct Config {
+    /// A connection URL for the Redis server to connect to.
     url: Url,
 }
 

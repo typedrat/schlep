@@ -12,6 +12,8 @@ use camino::{Utf8Path, Utf8PathBuf};
 use digest::OutputSizeUser;
 use generic_array::GenericArray;
 use md5::Md5;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use trait_enum::trait_enum;
 
@@ -312,6 +314,21 @@ impl VfsSetBuilder {
         Ok(self)
     }
 
+    pub fn from_config(config: Config) -> Result<Self, Error> {
+        let mut out = Self::new();
+
+        for config in config.vfs_configs {
+            match config {
+                VfsConfig::LocalDir {
+                    vfs_root,
+                    local_dir,
+                } => out = out.local_dir(vfs_root, local_dir)?,
+            }
+        }
+
+        Ok(out)
+    }
+
     /// Build a [`VfsSet`] that can be provided to a sftp that uses the VFS
     /// interface.
     pub fn build(&self) -> VfsSet {
@@ -323,4 +340,25 @@ impl Default for VfsSetBuilder {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[repr(transparent)]
+#[serde(transparent)]
+pub struct Config {
+    vfs_configs: Vec<VfsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename = "vfs_config", untagged)]
+pub enum VfsConfig {
+    LocalDir {
+        /// The directory root to mount the VFS at within the virtual hierarchy.
+        #[schemars(with = "String")]
+        vfs_root: Utf8PathBuf,
+
+        /// The local directory to expose at the given root.
+        #[schemars(with = "String")]
+        local_dir: Utf8PathBuf,
+    },
 }

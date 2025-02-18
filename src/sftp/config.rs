@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
 
 #[serde_inline_default]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename = "sftp_config")]
 pub struct Config {
     /// The address for the SFTP sftp to listen on.
     #[serde_inline_default("localhost".to_string())]

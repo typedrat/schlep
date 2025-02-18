@@ -2,13 +2,14 @@ use std::time::Duration;
 
 use bb8::ManageConnection;
 use ldap3::{Ldap, LdapConnAsync, LdapConnSettings};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use url::Url;
 
 use super::{error::IntoLdapError, AuthError};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LdapConfig {
     /// LDAP URL to connect to for user backend.
     pub(super) url: Url,
@@ -34,6 +35,7 @@ pub struct LdapConfig {
         skip_serializing_if = "LdapConfig::is_default_conn_timeout",
         with = "humantime_serde"
     )]
+    #[schemars(with = "String")]
     pub(super) conn_timeout: Duration,
 
     /// Enable StartTLS on the LDAP connection.
@@ -167,7 +169,10 @@ impl ManageConnection for LdapConnectionManager {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename = "auth_config")]
 pub struct Config {
+    /// Configuration for Schlep's connection to the underlying LDAP
+    /// authentication directory.
     pub(super) ldap: LdapConfig,
 }

@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
 use anyhow::Result;
-use camino::Utf8PathBuf;
 use mimalloc::MiMalloc;
 use tracing_subscriber::{self, fmt::format::FmtSpan};
 
@@ -33,10 +32,7 @@ pub async fn main() -> Result<()> {
 
     let auth_client = AuthClient::new(config.auth.clone(), redis_pool.clone()).await?;
 
-    let vfs_builder = VfsSetBuilder::new().local_dir(
-        Utf8PathBuf::from("/"),
-        Utf8PathBuf::from(config.fs.root_dir.as_str()),
-    )?;
+    let vfs_builder = VfsSetBuilder::from_config(config.fs)?;
 
     let mut server = SshServer::new(config.sftp.clone(), auth_client, vfs_builder.build());
     server.run().await?;

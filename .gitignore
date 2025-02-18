@@ -1,5 +1,6 @@
 .idea/
 /target
+/schema.json
 /schlep.toml
 /keys/*
 Cargo.svg

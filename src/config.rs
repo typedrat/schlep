@@ -3,21 +3,24 @@ use figment::{
     providers::{Env, Format, Toml},
     Figment,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{auth, redis, sftp};
+use crate::{auth, redis, sftp, vfs};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct FsConfig {
-    /// The root directory to serve.
-    pub root_dir: String,
-}
-
-#[derive(derive_more::Debug, Serialize, Deserialize, Clone)]
+#[derive(derive_more::Debug, Serialize, Deserialize, JsonSchema, Clone)]
 pub struct Config {
+    /// Configuration for Schlep's SFTP server.
     pub sftp: sftp::Config,
+
+    /// Configuration for Schlep's authentication system.
     pub auth: auth::Config,
-    pub fs: FsConfig,
+
+    /// An array of configuration objects defining the virtual filesystem roots.
+    pub fs: vfs::Config,
+
+    /// Configuration for a Redis-compatible cache server.
+    #[serde(default)]
     pub redis: Option<redis::Config>,
 }
 
