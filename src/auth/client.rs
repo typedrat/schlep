@@ -1,4 +1,7 @@
-use bb8::RunError;
+use deadpool::{
+    managed::{self, PoolError},
+    Runtime,
+};
 use ldap3::{ldap_escape, Scope, SearchEntry};
 use redis::AsyncCommands;
 use redis_macros::{FromRedisValue, ToRedisArgs};
@@ -6,7 +9,11 @@ use russh::keys::PublicKey;
 use serde::{Deserialize, Serialize};
 use tracing::{event, instrument, Level};
 
-use super::{config::LdapConnectionManager, AuthError, Config};
+use super::{
+    config::{LdapConfig, LdapConnectionManager},
+    AuthError,
+    Config,
+};
 use crate::{
     auth::error::{IntoLdapError, IntoRedisError},
     redis::RedisPool,
@@ -14,9 +21,9 @@ use crate::{
 
 #[derive(Clone)]
 pub struct AuthClient {
-    config: Config,
     redis_pool: Option<RedisPool>,
-    ldap_pool: bb8::Pool<LdapConnectionManager>,
+    ldap_config: LdapConfig,
+    ldap_pool: managed::Pool<LdapConnectionManager>,
 }
 
 pub type Result<T> = std::result::Result<T, AuthError>;
@@ -26,22 +33,17 @@ impl AuthClient {
         let ldap_manager = config.ldap.connection_manager();
         let ldap_pool_timeout = config.ldap.conn_timeout;
         let ldap_pool_max_size = config.ldap.pool_max_size;
-        let ldap_pool_min_size = if config.ldap.pool_min_size > 0 {
-            Some(config.ldap.pool_min_size)
-        } else {
-            None
-        };
 
-        let ldap_pool = bb8::Pool::builder()
-            .connection_timeout(ldap_pool_timeout)
+        let ldap_pool = managed::Pool::builder(ldap_manager)
+            .runtime(Runtime::Tokio1)
+            .create_timeout(Some(ldap_pool_timeout))
             .max_size(ldap_pool_max_size)
-            .min_idle(ldap_pool_min_size)
-            .build(ldap_manager)
-            .await?;
+            .build()
+            .unwrap();
 
         Ok(Self {
-            config,
             redis_pool,
+            ldap_config: config.ldap,
             ldap_pool,
         })
     }
@@ -51,10 +53,12 @@ impl AuthClient {
         if let Some(redis_pool) = self.redis_pool.as_ref() {
             let mut conn = match redis_pool.get().await {
                 Ok(conn) => conn,
-                Err(RunError::TimedOut) => return Err(AuthError::RedisConnectionTimeout),
-                Err(RunError::User(err)) => {
+                Err(PoolError::Timeout(_)) => return Err(AuthError::RedisConnectionTimeout),
+                Err(PoolError::Backend(err)) => {
                     return Err(err.into_redis_error("failed to get connection"))
                 }
+                Err(PoolError::PostCreateHook(err)) => return Err(AuthError::from(err)),
+                Err(_) => return Ok(None),
             };
 
             match conn.get::<_, Option<UserInfo>>(&cache_key).await {
@@ -78,10 +82,12 @@ impl AuthClient {
         if let Some(redis_pool) = self.redis_pool.as_ref() {
             let mut conn = match redis_pool.get().await {
                 Ok(conn) => conn,
-                Err(RunError::TimedOut) => return Err(AuthError::RedisConnectionTimeout),
-                Err(RunError::User(err)) => {
+                Err(PoolError::Timeout(_)) => return Err(AuthError::RedisConnectionTimeout),
+                Err(PoolError::Backend(err)) => {
                     return Err(err.into_redis_error("failed to get connection"))
                 }
+                Err(PoolError::PostCreateHook(err)) => return Err(AuthError::from(err)),
+                Err(_) => return Ok(()),
             };
 
             conn.set::<_, _, ()>(&cache_key, &user)
@@ -104,27 +110,30 @@ impl AuthClient {
         }
 
         let mut conn = match self.ldap_pool.get().await {
-            Ok(conn) => conn,
-            Err(RunError::TimedOut) => return Err(AuthError::LdapConnectionTimeout),
-            Err(RunError::User(err)) => return Err(err),
-        };
+            Ok(conn) => Ok(conn),
+            Err(PoolError::Timeout(_)) => Err(AuthError::RedisConnectionTimeout),
+            Err(PoolError::Backend(err)) => Err(err.into_ldap_error("failed to get connection")),
+            Err(PoolError::PostCreateHook(err)) => Err(AuthError::from(err)),
+            Err(PoolError::Closed) => Err(AuthError::LdapPoolClosed),
+            Err(PoolError::NoRuntimeSpecified) => unreachable!(),
+        }?;
 
-        conn.simple_bind(&self.config.ldap.bind_dn, &self.config.ldap.bind_password)
+        conn.simple_bind(&self.ldap_config.bind_dn, &self.ldap_config.bind_password)
             .await
             .into_ldap_error("failed to bind with provided bind credentials")?;
 
         let filter = format!(
             "{key}={value}",
-            key = ldap_escape(&self.config.ldap.user_attribute),
+            key = ldap_escape(&self.ldap_config.user_attribute),
             value = ldap_escape(username)
         );
 
         let search = conn
             .search(
-                &self.config.ldap.base_dn,
+                &self.ldap_config.base_dn,
                 Scope::Subtree,
                 &filter,
-                vec!["dn", "memberOf", &self.config.ldap.ssh_key_attribute],
+                vec!["dn", "memberOf", &self.ldap_config.ssh_key_attribute],
             )
             .await
             .into_ldap_error("failed to search for user")?;
@@ -145,7 +154,7 @@ impl AuthClient {
                 let dn = result.dn;
                 let mut public_keys = Vec::new();
 
-                if let Some(keys) = result.attrs.get(&self.config.ldap.ssh_key_attribute) {
+                if let Some(keys) = result.attrs.get(&self.ldap_config.ssh_key_attribute) {
                     for key in keys {
                         public_keys
                             .push(PublicKey::from_openssh(key).map_err(russh::keys::Error::from)?)

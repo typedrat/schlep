@@ -25,7 +25,7 @@ use russh_sftp::protocol::{
     Version,
 };
 use thiserror_ext::AsReport;
-use tracing::{event, Level};
+use tracing::{event, instrument, Level};
 use whirlwind::ShardSet;
 
 use super::Config;
@@ -36,6 +36,7 @@ use crate::{
 
 pub struct SftpSession {
     config: Config,
+    authenticated_username: String,
     cwd_path: Utf8PathBuf,
     vfs_set: VfsSet,
     version: Option<u32>,
@@ -43,9 +44,15 @@ pub struct SftpSession {
 }
 
 impl SftpSession {
-    pub fn new(config: Config, cwd_path: Utf8PathBuf, vfs_set: VfsSet) -> Self {
+    pub fn new(
+        config: Config,
+        authenticated_username: String,
+        cwd_path: Utf8PathBuf,
+        vfs_set: VfsSet,
+    ) -> Self {
         Self {
             config,
+            authenticated_username,
             cwd_path,
             vfs_set,
             version: None,

@@ -130,7 +130,7 @@ impl Vfs for LocalDir {
 
         let mut hasher = Sha256::new();
         let mut salt = [0u8; 32];
-        rand::rng().fill(&mut salt);
+        rand::thread_rng().fill(&mut salt);
 
         hasher.update(self.vfs_path.as_str());
         hasher.update(path.as_str());
@@ -163,7 +163,7 @@ impl Vfs for LocalDir {
 
         let mut hasher = Sha256::new();
         let mut salt = [0u8; 32];
-        rand::rng().fill(&mut salt);
+        rand::thread_rng().fill(&mut salt);
 
         hasher.update(self.vfs_path.as_str());
         hasher.update(path.as_str());

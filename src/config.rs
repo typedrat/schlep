@@ -6,7 +6,7 @@ use figment::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{auth, redis, sftp, vfs};
+use crate::{auth, metrics, redis, sftp, vfs};
 
 #[derive(derive_more::Debug, Serialize, Deserialize, JsonSchema, Clone)]
 pub struct Config {
@@ -22,6 +22,8 @@ pub struct Config {
     /// Configuration for a Redis-compatible cache server.
     #[serde(default)]
     pub redis: Option<redis::Config>,
+
+    pub metrics: metrics::Config,
 }
 
 impl Config {

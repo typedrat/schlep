@@ -1,3 +1,4 @@
+use deadpool::managed::HookError;
 use ldap3::LdapError;
 use redis::RedisError;
 
@@ -6,8 +7,14 @@ use redis::RedisError;
 pub enum AuthError {
     #[error("LDAP error: {from}")]
     LdapError { source: LdapError, from: String },
+    #[error("LDAP hook error")]
+    LdapHookError(#[from] HookError<LdapError>),
+    #[error("LDAP pool closed")]
+    LdapPoolClosed,
     #[error("redis error: {from}")]
     RedisError { source: RedisError, from: String },
+    #[error("LDAP hook error")]
+    RedisHookError(#[from] HookError<RedisError>),
     #[error("SSH key error")]
     SshKeyError(#[from] russh::keys::Error),
     #[error("not connected")]

@@ -1,13 +1,11 @@
 use std::time::Duration;
 
-use bb8::ManageConnection;
-use ldap3::{Ldap, LdapConnAsync, LdapConnSettings};
+use deadpool::managed;
+use ldap3::{Ldap, LdapConnAsync, LdapConnSettings, LdapError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::instrument;
+use tracing::{event, instrument, Level};
 use url::Url;
-
-use super::{error::IntoLdapError, AuthError};
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct LdapConfig {
@@ -19,14 +17,7 @@ pub struct LdapConfig {
         default = "LdapConfig::default_pool_max_size",
         skip_serializing_if = "LdapConfig::is_default_pool_max_size"
     )]
-    pub(super) pool_max_size: u32,
-
-    /// The minimum number of connections in the connection pool.
-    #[serde(
-        default = "LdapConfig::default_pool_min_size",
-        skip_serializing_if = "LdapConfig::is_default_pool_min_size"
-    )]
-    pub(super) pool_min_size: u32,
+    pub(super) pool_max_size: usize,
 
     /// The connection timeout for the LDAP sftp. The default
     /// value is 120 seconds.
@@ -69,20 +60,12 @@ pub struct LdapConfig {
 }
 
 impl LdapConfig {
-    fn default_pool_max_size() -> u32 {
+    fn default_pool_max_size() -> usize {
         10
     }
 
-    fn is_default_pool_max_size(size: &u32) -> bool {
+    fn is_default_pool_max_size(size: &usize) -> bool {
         *size == Self::default_pool_max_size()
-    }
-
-    fn default_pool_min_size() -> u32 {
-        0
-    }
-
-    fn is_default_pool_min_size(size: &u32) -> bool {
-        *size == Self::default_pool_min_size()
     }
 
     fn default_conn_timeout() -> Duration {
@@ -136,36 +119,36 @@ pub(super) struct LdapConnectionManager {
     conn_settings: LdapConnSettings,
 }
 
-impl ManageConnection for LdapConnectionManager {
-    type Connection = Ldap;
-    type Error = AuthError;
+impl managed::Manager for LdapConnectionManager {
+    type Type = Ldap;
+    type Error = LdapError;
 
-    #[instrument(name = "ldap_connect", skip(self), err)]
-    async fn connect(&self) -> Result<Self::Connection, Self::Error> {
+    #[instrument(skip(self), err)]
+    async fn create(&self) -> Result<Ldap, LdapError> {
         let (conn, mut ldap) =
-            LdapConnAsync::from_url_with_settings(self.conn_settings.clone(), &self.url)
-                .await
-                .into_ldap_error("connection failed")?;
+            LdapConnAsync::from_url_with_settings(self.conn_settings.clone(), &self.url).await?;
 
         ldap3::drive!(conn);
 
-        ldap.simple_bind(&self.bind_dn, &self.bind_password)
-            .await
-            .into_ldap_error("failed to bind with provided bind credentials")?;
+        ldap.simple_bind(&self.bind_dn, &self.bind_password).await?;
 
         Ok(ldap)
     }
 
-    async fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
-        if !conn.is_closed() {
-            Ok(())
-        } else {
-            Err(AuthError::NotConnected)
+    async fn recycle(
+        &self,
+        client: &mut Ldap,
+        _: &managed::Metrics,
+    ) -> managed::RecycleResult<LdapError> {
+        if client.is_closed() {
+            event!(
+                Level::WARN,
+                "Connection could not be recycled: Connection closed"
+            );
+            return Err(managed::RecycleError::message("connection closed"));
         }
-    }
 
-    fn has_broken(&self, conn: &mut Self::Connection) -> bool {
-        conn.is_closed()
+        Ok(())
     }
 }
 

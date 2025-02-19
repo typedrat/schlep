@@ -153,6 +153,7 @@ pub struct SshSession {
     auth_client: AuthClient,
     vfs_set: VfsSet,
     cwd: Utf8PathBuf,
+    authenticated_username: Option<String>,
     clients: ShardMap<ChannelId, Channel<Msg>, RandomState>,
 }
 
@@ -171,6 +172,7 @@ impl SshSession {
             auth_client,
             vfs_set,
             cwd,
+            authenticated_username: None,
             clients: ShardMap::with_hasher(RandomState::default()),
         }
     }
@@ -224,6 +226,8 @@ impl russh::server::Handler for SshSession {
                 .authenticate_password(user, password)
                 .await?
         {
+            self.authenticated_username = Some(user.to_owned());
+
             Ok(Auth::Accept)
         } else {
             self.methods.remove(MethodKind::Password);
@@ -245,6 +249,8 @@ impl russh::server::Handler for SshSession {
                 .authenticate_public_key(user, public_key)
                 .await?
         {
+            self.authenticated_username = Some(user.to_owned());
+
             Ok(Auth::Accept)
         } else {
             self.methods.remove(MethodKind::PublicKey);
@@ -324,13 +330,19 @@ impl russh::server::Handler for SshSession {
         name: &str,
         session: &mut Session,
     ) -> Result<()> {
+        let authenticated_username = self.authenticated_username.as_ref().unwrap().clone();
+
         if name == "sftp" {
             event!(Level::INFO, ?channel_id, "SFTP session started");
             let channel = self.get_channel(channel_id).await?;
             session.channel_success(channel_id)?;
 
-            let sftp =
-                SftpSession::new(self.config.clone(), self.cwd.clone(), self.vfs_set.clone());
+            let sftp = SftpSession::new(
+                self.config.clone(),
+                authenticated_username,
+                self.cwd.clone(),
+                self.vfs_set.clone(),
+            );
             let channel_stream = channel.into_stream();
             russh_sftp::server::run(channel_stream, sftp).await
         } else {

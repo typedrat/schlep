@@ -5,6 +5,7 @@
   "required": [
     "auth",
     "fs",
+    "metrics",
     "sftp"
   ],
   "properties": {
@@ -23,12 +24,15 @@
         "$ref": "#/definitions/vfs_config"
       }
     },
+    "metrics": {
+      "$ref": "#/definitions/Config"
+    },
     "redis": {
       "description": "Configuration for a Redis-compatible cache server.",
       "default": null,
       "anyOf": [
         {
-          "$ref": "#/definitions/redis_config"
+          "$ref": "#/definitions/RedisConfigSchema"
         },
         {
           "type": "null"
@@ -45,6 +49,131 @@
     }
   },
   "definitions": {
+    "Config": {
+      "type": "object",
+      "required": [
+        "address",
+        "enable_health_check",
+        "port"
+      ],
+      "properties": {
+        "address": {
+          "type": "string"
+        },
+        "enable_health_check": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ConnectionAddrSchema": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "Tcp"
+          ],
+          "properties": {
+            "Tcp": {
+              "type": "array",
+              "items": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                }
+              ],
+              "maxItems": 2,
+              "minItems": 2
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "TcpTls"
+          ],
+          "properties": {
+            "TcpTls": {
+              "type": "object",
+              "required": [
+                "host",
+                "insecure",
+                "port"
+              ],
+              "properties": {
+                "host": {
+                  "type": "string"
+                },
+                "insecure": {
+                  "type": "boolean"
+                },
+                "port": {
+                  "type": "integer",
+                  "format": "uint16",
+                  "minimum": 0.0
+                }
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "Unix"
+          ],
+          "properties": {
+            "Unix": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ConnectionInfoSchema": {
+      "type": "object",
+      "required": [
+        "addr",
+        "redis"
+      ],
+      "properties": {
+        "addr": {
+          "$ref": "#/definitions/ConnectionAddrSchema"
+        },
+        "redis": {
+          "$ref": "#/definitions/RedisConnectionInfoSchema"
+        }
+      }
+    },
+    "Duration": {
+      "type": "object",
+      "required": [
+        "nanos",
+        "secs"
+      ],
+      "properties": {
+        "nanos": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "secs": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
     "LdapConfig": {
       "type": "object",
       "required": [
@@ -73,13 +202,7 @@
         "pool_max_size": {
           "description": "The maximum number of connections in the connection pool.",
           "type": "integer",
-          "format": "uint32",
-          "minimum": 0.0
-        },
-        "pool_min_size": {
-          "description": "The minimum number of connections in the connection pool.",
-          "type": "integer",
-          "format": "uint32",
+          "format": "uint",
           "minimum": 0.0
         },
         "ssh_key_attribute": {
@@ -111,6 +234,135 @@
         }
       }
     },
+    "PoolConfigSchema": {
+      "type": "object",
+      "required": [
+        "max_size",
+        "queue_mode",
+        "timeouts"
+      ],
+      "properties": {
+        "max_size": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "queue_mode": {
+          "$ref": "#/definitions/QueueModeSchema"
+        },
+        "timeouts": {
+          "$ref": "#/definitions/TimeoutsSchema"
+        }
+      }
+    },
+    "ProtocolVersionSchema": {
+      "type": "string",
+      "enum": [
+        "RESP2",
+        "RESP3"
+      ]
+    },
+    "QueueModeSchema": {
+      "type": "string",
+      "enum": [
+        "Fifo",
+        "Lifo"
+      ]
+    },
+    "RedisConfigSchema": {
+      "type": "object",
+      "properties": {
+        "connection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ConnectionInfoSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pool": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PoolConfigSchema"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "RedisConnectionInfoSchema": {
+      "type": "object",
+      "required": [
+        "db",
+        "protocol"
+      ],
+      "properties": {
+        "db": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "password": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "protocol": {
+          "$ref": "#/definitions/ProtocolVersionSchema"
+        },
+        "username": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "TimeoutsSchema": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recycle": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wait": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Duration"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
     "auth_config": {
       "type": "object",
       "required": [
@@ -124,19 +376,6 @@
               "$ref": "#/definitions/LdapConfig"
             }
           ]
-        }
-      }
-    },
-    "redis_config": {
-      "type": "object",
-      "required": [
-        "url"
-      ],
-      "properties": {
-        "url": {
-          "description": "A connection URL for the Redis server to connect to.",
-          "type": "string",
-          "format": "uri"
         }
       }
     },
