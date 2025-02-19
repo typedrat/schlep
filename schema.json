@@ -1,0 +1,211 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Config",
+  "type": "object",
+  "required": [
+    "auth",
+    "fs",
+    "sftp"
+  ],
+  "properties": {
+    "auth": {
+      "description": "Configuration for Schlep's authentication system.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/auth_config"
+        }
+      ]
+    },
+    "fs": {
+      "description": "An array of configuration objects defining the virtual filesystem roots.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/vfs_config"
+      }
+    },
+    "redis": {
+      "description": "Configuration for a Redis-compatible cache server.",
+      "default": null,
+      "anyOf": [
+        {
+          "$ref": "#/definitions/redis_config"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sftp": {
+      "description": "Configuration for Schlep's SFTP server.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/sftp_config"
+        }
+      ]
+    }
+  },
+  "definitions": {
+    "LdapConfig": {
+      "type": "object",
+      "required": [
+        "base_dn",
+        "bind_dn",
+        "bind_password",
+        "url"
+      ],
+      "properties": {
+        "base_dn": {
+          "description": "Base DN for LDAP searches.",
+          "type": "string"
+        },
+        "bind_dn": {
+          "description": "Bind DN for LDAP search queries.",
+          "type": "string"
+        },
+        "bind_password": {
+          "description": "Password for the LDAP bind user.",
+          "type": "string"
+        },
+        "conn_timeout": {
+          "description": "The connection timeout for the LDAP sftp. The default value is 120 seconds.",
+          "type": "string"
+        },
+        "pool_max_size": {
+          "description": "The maximum number of connections in the connection pool.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "pool_min_size": {
+          "description": "The minimum number of connections in the connection pool.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "ssh_key_attribute": {
+          "description": "LDAP attribute containing SSH public keys.",
+          "type": "string"
+        },
+        "starttls": {
+          "description": "Enable StartTLS on the LDAP connection.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tls_no_verify": {
+          "description": "Skip verifying the TLS certificate for the LDAP connection.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "LDAP URL to connect to for user backend.",
+          "type": "string",
+          "format": "uri"
+        },
+        "user_attribute": {
+          "description": "LDAP attribute containing the username.",
+          "type": "string"
+        }
+      }
+    },
+    "auth_config": {
+      "type": "object",
+      "required": [
+        "ldap"
+      ],
+      "properties": {
+        "ldap": {
+          "description": "Configuration for Schlep's connection to the underlying LDAP authentication directory.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LdapConfig"
+            }
+          ]
+        }
+      }
+    },
+    "redis_config": {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "description": "A connection URL for the Redis server to connect to.",
+          "type": "string",
+          "format": "uri"
+        }
+      }
+    },
+    "sftp_config": {
+      "type": "object",
+      "required": [
+        "private_host_key_dir"
+      ],
+      "properties": {
+        "address": {
+          "description": "The address for the SFTP sftp to listen on.",
+          "default": "localhost",
+          "type": "string"
+        },
+        "allow_password": {
+          "description": "Allow clients to authenticate with their passwords.",
+          "default": false,
+          "type": "boolean"
+        },
+        "allow_publickey": {
+          "description": "Allow clients to authenticate with their public keys.",
+          "default": true,
+          "type": "boolean"
+        },
+        "default_dir_mode": {
+          "default": 511,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "default_file_mode": {
+          "default": 438,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "port": {
+          "description": "The port for the SFTP sftp to listen on.",
+          "default": 2222,
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "private_host_key_dir": {
+          "description": "Path to a directory containing OpenSSH-formatted private keys for the host to advertise to clients.",
+          "type": "string"
+        }
+      }
+    },
+    "vfs_config": {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "local_dir",
+            "vfs_root"
+          ],
+          "properties": {
+            "local_dir": {
+              "description": "The local directory to expose at the given root.",
+              "type": "string"
+            },
+            "vfs_root": {
+              "description": "The directory root to mount the VFS at within the virtual hierarchy.",
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
