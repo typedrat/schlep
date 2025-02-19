@@ -1,0 +1,5 @@
+[tools]
+pkl = "latest"
+rust = "nightly"
+hk = "latest"
+jd = "latest"

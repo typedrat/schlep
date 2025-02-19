@@ -1,0 +1,9 @@
+amends "https://hk.jdx.dev/v0/hk.pkl"
+
+min_hk_version = "0.2.4"
+
+`pre-commit` {
+    ["check-schema"] {
+        check_all = "cargo run --bin schlep-schema 2>/dev/null | jd -set schema.json"
+    }
+}
