@@ -18,7 +18,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  CACHE_NAME: ${{ env.IMAGE_NAME }}/buildcache
+  CACHE_NAME: ${{ github.repository }}/buildcache
 
 jobs:
   build:
