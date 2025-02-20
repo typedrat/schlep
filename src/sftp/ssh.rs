@@ -148,6 +148,7 @@ impl Server for SshServer {
             {
                 ()
             }
+            Error::RusshError(russh::Error::InactivityTimeout) => (),
 
             _ => event!(
                 Level::ERROR,
