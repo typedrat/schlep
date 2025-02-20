@@ -13,6 +13,7 @@ use ahash::RandomState;
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_primitives::ambient_authority;
 use cap_std::fs_utf8::Dir;
+use metrics::{gauge, Gauge};
 use russh::{
     keys::ssh_key::{self, PrivateKey},
     server::{Auth, Msg, Server, Session},
@@ -37,6 +38,7 @@ pub struct SshServer {
     methods: MethodSet,
     auth_client: AuthClient,
     vfs_set: VfsSet,
+    clients_gauge: Gauge,
 }
 
 impl SshServer {
@@ -51,11 +53,17 @@ impl SshServer {
             methods.push(MethodKind::PublicKey);
         }
 
+        const CLIENTS: &'static str = "clients";
+        const SERVICE: &'static str = "service";
+        const SSH: &'static str = "ssh";
+        let clients_gauge = gauge!(CLIENTS, SERVICE => SSH);
+
         Self {
             config,
             methods,
             auth_client,
             vfs_set,
+            clients_gauge,
         }
     }
 
@@ -121,11 +129,14 @@ impl Server for SshServer {
             event!(Level::INFO, ?sock_addr, "Client connected");
         }
 
+        self.clients_gauge.increment(1);
+
         SshSession::new(
             self.config.clone(),
             self.methods.clone(),
             self.auth_client.clone(),
             self.vfs_set.clone(),
+            self.clients_gauge.clone(),
         )
     }
 
@@ -152,6 +163,7 @@ pub struct SshSession {
     methods: MethodSet,
     auth_client: AuthClient,
     vfs_set: VfsSet,
+    clients_gauge: Gauge,
     cwd: Utf8PathBuf,
     authenticated_username: Option<String>,
     clients: ShardMap<ChannelId, Channel<Msg>, RandomState>,
@@ -163,6 +175,7 @@ impl SshSession {
         methods: MethodSet,
         auth_client: AuthClient,
         vfs_set: VfsSet,
+        clients_gauge: Gauge,
     ) -> Self {
         let cwd: Utf8PathBuf = Utf8PathBuf::from("/");
 
@@ -171,6 +184,7 @@ impl SshSession {
             methods,
             auth_client,
             vfs_set,
+            clients_gauge,
             cwd,
             authenticated_username: None,
             clients: ShardMap::with_hasher(RandomState::default()),
@@ -264,6 +278,7 @@ impl russh::server::Handler for SshSession {
     async fn channel_eof(&mut self, channel: ChannelId, session: &mut Session) -> Result<()> {
         session.close(channel)?;
         self.clients.remove(&channel).await;
+        self.clients_gauge.decrement(1);
 
         Ok(())
     }

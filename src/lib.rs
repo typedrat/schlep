@@ -25,6 +25,9 @@ pub async fn main() -> Result<()> {
         .with_span_events(FmtSpan::CLOSE)
         .init();
 
+    let metrics_handle =
+        metrics_exporter_prometheus::PrometheusBuilder::new().install_recorder()?;
+
     let config = Config::load()?;
 
     let redis_pool = if let Some(redis_config) = config.redis {
@@ -35,7 +38,7 @@ pub async fn main() -> Result<()> {
     let auth_client = AuthClient::new(config.auth.clone(), redis_pool.clone()).await?;
     let vfs_builder = VfsSetBuilder::from_config(config.fs)?;
 
-    let metrics_server = Metrics::new(config.metrics.clone());
+    let metrics_server = Metrics::new(config.metrics.clone(), metrics_handle);
     let mut ssh_server = SshServer::new(config.sftp.clone(), auth_client, vfs_builder.build());
 
     let ssh = tokio::spawn(async move { ssh_server.run().await });

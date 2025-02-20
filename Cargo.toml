@@ -29,6 +29,8 @@ ldap3 = { version = "0.11.5", default-features = false, features = [
     "tls-rustls",
 ] }
 md-5 = "0.10.6"
+metrics = "0.24.1"
+metrics-exporter-prometheus = { version = "0.16.2", default-features = false, features = ["async-runtime", "tracing"] }
 mimalloc = "0.1.43"
 path-absolutize = "3.1.1"
 pathdiff = { version = "0.2.3", features = ["camino"] }
