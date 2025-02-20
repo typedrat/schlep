@@ -1,6 +1,3 @@
-LABEL org.opencontainers.image.description="Schlep is the less-is-more SFTP server that is designed to integrate with your existing systems, not replace them."
-LABEL org.opencontainers.image.source="https://github.com/typedrat/schlep"
-
 ARG UBUNTU_RELEASE=24.04
 ARG CHISEL_RELEASE=1.1.0
 
@@ -38,6 +35,9 @@ COPY . .
 RUN cargo build --release --bin schlep
 
 FROM scratch
+LABEL org.opencontainers.image.description="Schlep is the less-is-more SFTP server that is designed to integrate with your existing systems, not replace them."
+LABEL org.opencontainers.image.source="https://github.com/typedrat/schlep"
+
 COPY --from=os_builder /rootfs /
 WORKDIR /app
 COPY --from=builder /app/target/release/schlep /usr/local/bin/schlep
