@@ -13,7 +13,7 @@ use ahash::RandomState;
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_primitives::ambient_authority;
 use cap_std::fs_utf8::Dir;
-use metrics::{gauge, Gauge};
+use metrics::gauge;
 use russh::{
     keys::ssh_key::{self, PrivateKey},
     server::{Auth, Msg, Server, Session},
@@ -28,8 +28,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{event, info, instrument, Level};
 use whirlwind::ShardMap;
 
-use super::{hash, Config, Error};
-use crate::{auth::AuthClient, metrics::Metrics, sftp::sftp::SftpSession, vfs::VfsSet};
+use super::{hash, sftp::SftpSession, Config, Error};
+use crate::{auth::AuthClient, metrics::Metrics, vfs::VfsSet};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
