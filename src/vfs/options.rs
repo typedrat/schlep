@@ -4,7 +4,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use bitflags::{bitflags, bitflags_match};
+use bitflags::bitflags;
 use cap_primitives::fs::MetadataExt as _;
 use cap_std::fs::OpenOptions;
 use russh_sftp::protocol::FileAttributes;
@@ -189,20 +189,35 @@ impl From<russh_sftp::protocol::OpenFlags> for OpenFlags {
     }
 }
 
+macro_rules! convert_flags {
+    ( $input:ident, $output:ident, [ $(( $src:expr , $dst:ident ), )* ] ) => {
+        {
+            $(
+                if ($input.contains($src)) {
+                    $output.$dst(true);
+                }
+            )*
+        }
+    };
+}
+
 impl From<OpenFlags> for OpenOptions {
     fn from(flags: OpenFlags) -> Self {
-        let mut opts = OpenOptions::new();
+        let mut out = OpenOptions::new();
 
-        bitflags_match!(flags, {
-            OpenFlags::READ => { let _ = opts.read(true); }
-            OpenFlags::WRITE => { let _ = opts.write(true); }
-            OpenFlags::APPEND => { let _ = opts.append(true); }
-            OpenFlags::CREATE => { let _ = opts.create(true); }
-            OpenFlags::TRUNCATE => { let _ = opts.truncate(true); }
-            OpenFlags::EXCLUDE => { let _ = opts.create_new(true); }
-            _ => {}
-        });
+        convert_flags!(
+            flags,
+            out,
+            [
+                (OpenFlags::READ, read),
+                (OpenFlags::WRITE, write),
+                (OpenFlags::APPEND, append),
+                (OpenFlags::CREATE, create),
+                (OpenFlags::TRUNCATE, truncate),
+                (OpenFlags::EXCLUDE, create_new),
+            ]
+        );
 
-        opts
+        out
     }
 }
