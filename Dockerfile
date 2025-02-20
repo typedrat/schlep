@@ -25,7 +25,7 @@ RUN \
 
 FROM ghcr.io/rust-lang/rust:nightly AS chef
 RUN cargo install cargo-chef
-WORKDIR app
+WORKDIR /app
 
 FROM chef AS planner
 COPY . .
@@ -39,6 +39,6 @@ RUN cargo build --release --bin schlep
 
 FROM scratch
 COPY --from=os_builder /rootfs /
-WORKDIR app
+WORKDIR /app
 COPY --from=builder /app/target/release/schlep /usr/local/bin/schlep
 ENTRYPOINT ["/usr/local/bin/schlep"]
