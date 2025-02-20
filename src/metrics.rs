@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use axum::{extract::State, response::IntoResponse, routing, Router};
 use http::{HeaderMap, StatusCode};
+use metrics::{describe_gauge, describe_histogram};
 use metrics_exporter_prometheus::PrometheusHandle;
+use parking_lot::Once;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_inline_default::serde_inline_default;
@@ -29,7 +31,32 @@ pub struct Metrics {
 }
 
 impl Metrics {
+    pub const SFTP_CLIENTS: &'static str = "schlep_sftp_clients";
+    pub const SFTP_READ_DURATION: &'static str = "schlep_sftp_read_duration";
+    pub const SFTP_WRITE_DURATION: &'static str = "schlep_sftp_write_duration";
+
+    fn register_metrics() {
+        static REGISTER_METRICS: Once = Once::new();
+
+        REGISTER_METRICS.call_once(|| {
+            describe_gauge!(Self::SFTP_CLIENTS, "active SFTP connections");
+
+            describe_histogram!(
+                Self::SFTP_READ_DURATION,
+                metrics::Unit::Seconds,
+                "duration per read operation"
+            );
+            describe_histogram!(
+                Self::SFTP_WRITE_DURATION,
+                metrics::Unit::Seconds,
+                "duration per write operation"
+            );
+        })
+    }
+
     pub fn new(config: Config, handle: PrometheusHandle) -> Self {
+        Self::register_metrics();
+
         Self {
             config: Arc::new(config),
             handle: Arc::new(handle),

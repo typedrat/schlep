@@ -29,7 +29,7 @@ use tracing::{event, info, instrument, Level};
 use whirlwind::ShardMap;
 
 use super::{hash, Config, Error};
-use crate::{auth::AuthClient, sftp::sftp::SftpSession, vfs::VfsSet};
+use crate::{auth::AuthClient, metrics::Metrics, sftp::sftp::SftpSession, vfs::VfsSet};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -38,7 +38,6 @@ pub struct SshServer {
     methods: MethodSet,
     auth_client: AuthClient,
     vfs_set: VfsSet,
-    clients_gauge: Gauge,
 }
 
 impl SshServer {
@@ -53,17 +52,11 @@ impl SshServer {
             methods.push(MethodKind::PublicKey);
         }
 
-        const CLIENTS: &'static str = "clients";
-        const SERVICE: &'static str = "service";
-        const SSH: &'static str = "ssh";
-        let clients_gauge = gauge!(CLIENTS, SERVICE => SSH);
-
         Self {
             config,
             methods,
             auth_client,
             vfs_set,
-            clients_gauge,
         }
     }
 
@@ -73,6 +66,7 @@ impl SshServer {
         let russh_config = russh::server::Config {
             methods: self.methods.clone(),
             keys: host_keys,
+            window_size: 16 * 1024 * 1024,
             ..Default::default()
         };
 
@@ -129,14 +123,13 @@ impl Server for SshServer {
             event!(Level::INFO, ?sock_addr, "Client connected");
         }
 
-        self.clients_gauge.increment(1);
+        gauge!(Metrics::SFTP_CLIENTS).increment(1);
 
         SshSession::new(
             self.config.clone(),
             self.methods.clone(),
             self.auth_client.clone(),
             self.vfs_set.clone(),
-            self.clients_gauge.clone(),
         )
     }
 
@@ -164,7 +157,6 @@ pub struct SshSession {
     methods: MethodSet,
     auth_client: AuthClient,
     vfs_set: VfsSet,
-    clients_gauge: Gauge,
     cwd: Utf8PathBuf,
     authenticated_username: Option<String>,
     clients: ShardMap<ChannelId, Channel<Msg>, RandomState>,
@@ -176,7 +168,6 @@ impl SshSession {
         methods: MethodSet,
         auth_client: AuthClient,
         vfs_set: VfsSet,
-        clients_gauge: Gauge,
     ) -> Self {
         let cwd: Utf8PathBuf = Utf8PathBuf::from("/");
 
@@ -185,7 +176,6 @@ impl SshSession {
             methods,
             auth_client,
             vfs_set,
-            clients_gauge,
             cwd,
             authenticated_username: None,
             clients: ShardMap::with_hasher(RandomState::default()),
@@ -279,7 +269,7 @@ impl russh::server::Handler for SshSession {
     async fn channel_eof(&mut self, channel: ChannelId, session: &mut Session) -> Result<()> {
         session.close(channel)?;
         self.clients.remove(&channel).await;
-        self.clients_gauge.decrement(1);
+        gauge!(Metrics::SFTP_CLIENTS).decrement(1);
 
         Ok(())
     }

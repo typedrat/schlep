@@ -31,7 +31,10 @@ ldap3 = { version = "0.11.5", default-features = false, features = [
 md-5 = "0.10.6"
 metrics = "0.24.1"
 metrics-exporter-prometheus = { version = "0.16.2", default-features = false, features = ["async-runtime", "tracing"] }
+metrics-tracing-context = "0.18.0"
+metrics-util = { version = "0.19.0", features = ["ahash"] }
 mimalloc = "0.1.43"
+parking_lot = "0.12.3"
 path-absolutize = "3.1.1"
 pathdiff = { version = "0.2.3", features = ["camino"] }
 rand = "0.8.5"
@@ -62,7 +65,9 @@ thiserror = "2.0.11"
 thiserror-ext = "0.2.1"
 tokio = { version = "1.43.0", features = ["full"] }
 tracing = "0.1.41"
+tracing-log = { version = "0.2.0", features = ["ahash"] }
 tracing-subscriber = { version = "0.3.19", features = [
+    "env-filter",
     "time",
     "local-time",
     "smallvec",

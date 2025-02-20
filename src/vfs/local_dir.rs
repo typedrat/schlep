@@ -208,6 +208,10 @@ impl Vfs for LocalDir {
         }
     }
 
+    fn vfs_root(&self) -> &Utf8Path {
+        self.vfs_path.as_path()
+    }
+
     async fn read(
         &self,
         handle: &Handle,

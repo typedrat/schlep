@@ -10,6 +10,7 @@ use std::{
 use ahash::RandomState;
 use async_trait::async_trait;
 use camino::{Utf8Path, Utf8PathBuf};
+use metrics::histogram;
 use path_absolutize::Absolutize;
 use russh_sftp::protocol::{
     Attrs,
@@ -30,6 +31,7 @@ use whirlwind::ShardSet;
 
 use super::Config;
 use crate::{
+    metrics::Metrics,
     vfs,
     vfs::{PathMatch, VfsInstance, VfsSet},
 };
@@ -135,6 +137,7 @@ impl russh_sftp::server::Handler for SftpSession {
         .await
     }
 
+    #[instrument(skip_all, fields(size = len, vfs))]
     async fn read(
         &mut self,
         id: u32,
@@ -142,16 +145,28 @@ impl russh_sftp::server::Handler for SftpSession {
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
-        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+        let start_time = SystemTime::now();
+
+        let data = handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            tracing::Span::current().record("vfs", &vfs.vfs_root().as_str());
+
             match vfs.read(&handle, offset as usize, len as usize).await {
                 Ok(Some(data)) => Ok(Data { id, data }),
                 Ok(None) => Err(StatusCode::Eof),
                 Err(_) => Err(StatusCode::Failure),
             }
         })
-        .await
+        .await?;
+
+        let end_time = SystemTime::now();
+        if let Ok(duration) = end_time.duration_since(start_time) {
+            histogram!(Metrics::SFTP_READ_DURATION).record(duration);
+        }
+
+        Ok(data)
     }
 
+    #[instrument(skip_all, fields(size = data.len(), vfs))]
     async fn write(
         &mut self,
         id: u32,
@@ -159,7 +174,11 @@ impl russh_sftp::server::Handler for SftpSession {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
-        handle_match(&self.vfs_set, handle, async |vfs, handle| {
+        let start_time = SystemTime::now();
+
+        let status = handle_match(&self.vfs_set, handle, async |vfs, handle| {
+            tracing::Span::current().record("vfs", &vfs.vfs_root().as_str());
+
             if let Ok(()) = vfs.write(&handle, offset as usize, data.as_slice()).await {
                 Ok(Status {
                     id,
@@ -171,7 +190,14 @@ impl russh_sftp::server::Handler for SftpSession {
                 Err(StatusCode::Failure)
             }
         })
-        .await
+        .await?;
+
+        let end_time = SystemTime::now();
+        if let Ok(duration) = end_time.duration_since(start_time) {
+            histogram!(Metrics::SFTP_WRITE_DURATION).record(duration);
+        }
+
+        Ok(status)
     }
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         path_match(

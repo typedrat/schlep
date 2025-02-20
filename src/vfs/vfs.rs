@@ -30,6 +30,7 @@ pub trait Vfs: Send {
     async fn open_dir(&self, path: &Utf8Path) -> Result<Handle, Error>;
     async fn close(&self, handle: Handle) -> Result<(), Error>;
     async fn owns_handle(&self, handle: &Handle) -> bool;
+    fn vfs_root(&self) -> &Utf8Path;
 
     /// Reads `len` bytes from the file represented by the given `handle`,
     /// starting at `offset` bytes from the start of the file.
