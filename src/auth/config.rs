@@ -123,7 +123,12 @@ impl managed::Manager for LdapConnectionManager {
     type Type = Ldap;
     type Error = LdapError;
 
-    #[instrument(skip(self), err)]
+    #[instrument(
+        skip(self),
+        name = "ldap_connect"
+        target = "schlep::auth::client",
+        err
+    )]
     async fn create(&self) -> Result<Ldap, LdapError> {
         let (conn, mut ldap) =
             LdapConnAsync::from_url_with_settings(self.conn_settings.clone(), &self.url).await?;

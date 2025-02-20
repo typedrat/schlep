@@ -54,6 +54,7 @@
       "required": [
         "address",
         "enable_health_check",
+        "enable_metrics_export",
         "port"
       ],
       "properties": {
@@ -61,6 +62,9 @@
           "type": "string"
         },
         "enable_health_check": {
+          "type": "boolean"
+        },
+        "enable_metrics_export": {
           "type": "boolean"
         },
         "port": {
