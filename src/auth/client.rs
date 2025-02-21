@@ -1,18 +1,18 @@
 use deadpool::{
-    managed::{self, PoolError},
     Runtime,
+    managed::{self, PoolError},
 };
-use ldap3::{ldap_escape, Scope, SearchEntry};
+use ldap3::{Scope, SearchEntry, ldap_escape};
 use redis::AsyncCommands;
 use redis_macros::{FromRedisValue, ToRedisArgs};
 use russh::keys::PublicKey;
 use serde::{Deserialize, Serialize};
-use tracing::{event, instrument, Level};
+use tracing::{Level, event, instrument};
 
 use super::{
-    config::{LdapConfig, LdapConnectionManager},
     AuthError,
     Config,
+    config::{LdapConfig, LdapConnectionManager},
 };
 use crate::{
     auth::error::{IntoLdapError, IntoRedisError},
@@ -55,7 +55,7 @@ impl AuthClient {
                 Ok(conn) => conn,
                 Err(PoolError::Timeout(_)) => return Err(AuthError::RedisConnectionTimeout),
                 Err(PoolError::Backend(err)) => {
-                    return Err(err.into_redis_error("failed to get connection"))
+                    return Err(err.into_redis_error("failed to get connection"));
                 }
                 Err(PoolError::PostCreateHook(err)) => return Err(AuthError::from(err)),
                 Err(_) => return Ok(None),
@@ -84,7 +84,7 @@ impl AuthClient {
                 Ok(conn) => conn,
                 Err(PoolError::Timeout(_)) => return Err(AuthError::RedisConnectionTimeout),
                 Err(PoolError::Backend(err)) => {
-                    return Err(err.into_redis_error("failed to get connection"))
+                    return Err(err.into_redis_error("failed to get connection"));
                 }
                 Err(PoolError::PostCreateHook(err)) => return Err(AuthError::from(err)),
                 Err(_) => return Ok(()),

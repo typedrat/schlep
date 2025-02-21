@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{extract::State, response::IntoResponse, routing, Router};
+use axum::{Router, extract::State, response::IntoResponse, routing};
 use http::{HeaderMap, StatusCode};
 use metrics::{describe_gauge, describe_histogram};
 use metrics_exporter_prometheus::PrometheusHandle;

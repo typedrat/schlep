@@ -108,11 +108,7 @@ impl GitInfo {
 }
 
 fn unbool(x: bool) -> &'static str {
-    if x {
-        "true"
-    } else {
-        "false"
-    }
+    if x { "true" } else { "false" }
 }
 
 pub const VERSION_INFO: VersionInfo = VersionInfo {

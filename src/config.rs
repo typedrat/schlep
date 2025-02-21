@@ -1,7 +1,7 @@
 use anyhow::Result;
 use figment::{
-    providers::{Env, Format, Toml},
     Figment,
+    providers::{Env, Format, Toml},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

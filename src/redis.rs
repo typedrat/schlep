@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use std::{path::PathBuf, time::Duration};
 
-use deadpool::{managed::QueueMode, Runtime};
+use deadpool::{Runtime, managed::QueueMode};
 use deadpool_redis::{
     ConnectionAddr,
     ConnectionInfo,
