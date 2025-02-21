@@ -66,7 +66,7 @@ pub async fn main() -> Result<()> {
     } else {
         None
     };
-    let auth_client = AuthClient::new(config.auth.clone(), redis_pool.clone()).await?;
+    let auth_client = AuthClient::new(config.auth.clone(), redis_pool.clone())?;
     let vfs_builder = VfsSetBuilder::from_config(config.fs)?;
 
     let metrics_server = Metrics::new(config.metrics.clone(), metrics_handle);

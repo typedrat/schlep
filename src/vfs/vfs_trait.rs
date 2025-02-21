@@ -47,12 +47,12 @@ pub trait Vfs: Send {
     async fn read(
         &self,
         handle: &Handle,
-        offset: usize,
+        offset: u64,
         len: usize,
     ) -> Result<Option<Vec<u8>>, Error>;
 
     async fn read_dir(&self, handle: &Handle) -> Result<Vec<(Utf8PathBuf, Metadata)>, Error>;
-    async fn write(&self, handle: &Handle, offset: usize, data: &[u8]) -> Result<(), Error>;
+    async fn write(&self, handle: &Handle, offset: u64, data: &[u8]) -> Result<(), Error>;
     async fn stat_fd(&self, handle: &Handle) -> Result<Metadata, Error>;
     async fn sync_fd(&self, handle: &Handle) -> Result<(), Error>;
 
@@ -121,6 +121,7 @@ pub struct Handle {
 
 impl Handle {
     /// Generate a handle for an open file, based on the internal `vfs_handle`.
+    #[must_use]
     pub fn file(vfs_handle: String) -> Self {
         Handle {
             handle_ty: HandleType::File,
@@ -130,6 +131,7 @@ impl Handle {
 
     /// Generate a handle for an open directory, based on the internal
     /// `vfs_handle`.
+    #[must_use]
     pub fn dir(vfs_handle: String) -> Self {
         Handle {
             handle_ty: HandleType::Dir,
@@ -138,11 +140,13 @@ impl Handle {
     }
 
     /// Reports if this handle represents a file or a directory.
+    #[must_use]
     pub fn handle_type(&self) -> HandleType {
         self.handle_ty
     }
 
     /// Get a reference to the internal `vfs_handle`.
+    #[must_use]
     pub fn vfs_handle(&self) -> &str {
         self.vfs_handle.as_str()
     }
@@ -218,7 +222,7 @@ impl Deref for VfsInstance {
     type Target = dyn Vfs;
 
     fn deref(&self) -> &Self::Target {
-        self.inner.deref()
+        &*self.inner
     }
 }
 
@@ -242,6 +246,7 @@ impl VfsSet {
         Self { vfs_map }
     }
 
+    #[must_use]
     pub fn resolve_path(&self, path: &Utf8Path) -> Option<PathMatch> {
         use pathdiff::diff_utf8_paths;
 
@@ -290,6 +295,7 @@ pub struct VfsSetBuilder {
 
 impl VfsSetBuilder {
     /// Construct a new [`VfsSetBuilder`].
+    #[must_use]
     pub fn new() -> Self {
         Self {
             vfs_map: HashMap::default(),
@@ -332,6 +338,7 @@ impl VfsSetBuilder {
 
     /// Build a [`VfsSet`] that can be provided to a sftp that uses the VFS
     /// interface.
+    #[must_use]
     pub fn build(&self) -> VfsSet {
         VfsSet::new(self.vfs_map.clone())
     }

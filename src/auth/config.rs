@@ -64,6 +64,7 @@ impl LdapConfig {
         10
     }
 
+    #[allow(clippy::trivially_copy_pass_by_ref)]
     fn is_default_pool_max_size(size: &usize) -> bool {
         *size == Self::default_pool_max_size()
     }

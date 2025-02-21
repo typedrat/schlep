@@ -29,7 +29,7 @@ pub struct AuthClient {
 pub type Result<T> = std::result::Result<T, AuthError>;
 
 impl AuthClient {
-    pub async fn new(config: Config, redis_pool: Option<RedisPool>) -> Result<Self> {
+    pub fn new(config: Config, redis_pool: Option<RedisPool>) -> Result<Self> {
         let ldap_manager = config.ldap.connection_manager();
         let ldap_pool_timeout = config.ldap.conn_timeout;
         let ldap_pool_max_size = config.ldap.pool_max_size;
@@ -157,7 +157,7 @@ impl AuthClient {
                 if let Some(keys) = result.attrs.get(&self.ldap_config.ssh_key_attribute) {
                     for key in keys {
                         public_keys
-                            .push(PublicKey::from_openssh(key).map_err(russh::keys::Error::from)?)
+                            .push(PublicKey::from_openssh(key).map_err(russh::keys::Error::from)?);
                     }
                 }
 

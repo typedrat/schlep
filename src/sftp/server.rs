@@ -3,6 +3,7 @@ use std::{
     path::Path,
     result::Result,
     str::FromStr,
+    string::ToString,
     sync::{Arc, LazyLock},
     time::{Duration, SystemTime},
 };
@@ -148,7 +149,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let data = handle_match(&self.vfs_set, handle, async |vfs, handle| {
             tracing::Span::current().record("vfs", vfs.vfs_root().as_str());
 
-            match vfs.read(&handle, offset as usize, len as usize).await {
+            match vfs.read(&handle, offset, len as usize).await {
                 Ok(Some(data)) => Ok(Data { id, data }),
                 Ok(None) => Err(StatusCode::Eof),
                 Err(_) => Err(StatusCode::Failure),
@@ -177,7 +178,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let status = handle_match(&self.vfs_set, handle, async |vfs, handle| {
             tracing::Span::current().record("vfs", vfs.vfs_root().as_str());
 
-            if let Ok(()) = vfs.write(&handle, offset as usize, data.as_slice()).await {
+            if let Ok(()) = vfs.write(&handle, offset, data.as_slice()).await {
                 Ok(Status {
                     id,
                     status_code: StatusCode::Ok,
@@ -417,7 +418,7 @@ impl russh_sftp::server::Handler for SftpSession {
             .absolutize_from(self.cwd_path.as_std_path())
             .map_err(|_| StatusCode::Failure)?
             .to_str()
-            .map(|s| s.to_string())
+            .map(ToString::to_string)
             .ok_or(StatusCode::Failure)?;
 
         Ok(Name {
@@ -554,11 +555,10 @@ where
     F: AsyncFnOnce(Arc<VfsInstance>, &Utf8Path) -> Result<T, StatusCode>,
 {
     let path = Path::new(path);
-    if let Ok(Some(absolute_path)) = path.absolutize_from(cwd.as_std_path()).map(|p| {
-        Utf8Path::from_path(&p)
-            .to_owned()
-            .map(Utf8Path::to_path_buf)
-    }) {
+    if let Ok(Some(absolute_path)) = path
+        .absolutize_from(cwd.as_std_path())
+        .map(|p| Utf8Path::from_path(&p).map(Utf8Path::to_path_buf))
+    {
         if let Some(PathMatch { vfs, relative_path }) = vfs_set.resolve_path(&absolute_path) {
             fun(vfs, relative_path.as_path()).await
         } else {
@@ -582,22 +582,18 @@ where
     let path1 = Path::new(path1);
     let path2 = Path::new(path2);
 
-    let absolute_path1 = match path1.absolutize_from(cwd.as_std_path()).map(|p| {
-        Utf8Path::from_path(&p)
-            .to_owned()
-            .map(Utf8Path::to_path_buf)
-    }) {
-        Ok(Some(path)) => path,
-        _ => return Err(StatusCode::Failure),
+    let Ok(Some(absolute_path1)) = path1
+        .absolutize_from(cwd.as_std_path())
+        .map(|p| Utf8Path::from_path(&p).map(Utf8Path::to_path_buf))
+    else {
+        return Err(StatusCode::Failure);
     };
 
-    let absolute_path2 = match path2.absolutize_from(cwd.as_std_path()).map(|p| {
-        Utf8Path::from_path(&p)
-            .to_owned()
-            .map(Utf8Path::to_path_buf)
-    }) {
-        Ok(Some(path)) => path,
-        _ => return Err(StatusCode::Failure),
+    let Ok(Some(absolute_path2)) = path2
+        .absolutize_from(cwd.as_std_path())
+        .map(|p| Utf8Path::from_path(&p).map(Utf8Path::to_path_buf))
+    else {
+        return Err(StatusCode::Failure);
     };
 
     let path_match1 = vfs_set.resolve_path(&absolute_path1);

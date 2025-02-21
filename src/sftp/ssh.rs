@@ -1,8 +1,7 @@
 use std::{
     ffi::OsString,
     future::Future,
-    io,
-    io::{ErrorKind, read_to_string},
+    io::{self, ErrorKind, read_to_string},
     net::SocketAddr,
     os::unix::prelude::OsStringExt,
     pin::Pin,
@@ -41,6 +40,7 @@ pub struct SshServer {
 }
 
 impl SshServer {
+    #[must_use]
     pub fn new(config: Config, auth_client: AuthClient, vfs_set: VfsSet) -> Self {
         let mut methods = MethodSet::empty();
 
@@ -98,7 +98,10 @@ fn get_host_keys(config: &Config) -> io::Result<Vec<PrivateKey>> {
             let entry = entry?;
             let file_name = entry.file_name()?;
 
-            if file_name.ends_with(".pub") {
+            if Utf8Path::new(&file_name)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("pub"))
+            {
                 continue;
             }
 
@@ -347,7 +350,7 @@ impl russh::server::Handler for SshSession {
                 self.vfs_set.clone(),
             );
             let channel_stream = channel.into_stream();
-            russh_sftp::server::run(channel_stream, sftp).await
+            russh_sftp::server::run(channel_stream, sftp).await;
         } else {
             session.channel_failure(channel_id)?;
         }

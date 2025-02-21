@@ -1,4 +1,5 @@
 use anyhow::Result;
+#[allow(clippy::wildcard_imports)]
 use vergen_gitcl::*;
 
 fn main() -> Result<()> {

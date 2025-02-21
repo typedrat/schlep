@@ -12,6 +12,10 @@ default-run = "schlep"
 [lints.clippy]
 cargo = "warn"
 multiple-crate-versions = { level = "allow", priority = 1 }
+pedantic = "warn"
+if_not_else = { level = "allow", priority = 1 }
+missing_errors_doc = { level = "allow", priority = 1 }
+missing_panics_doc = { level = "allow", priority = 1 }
 
 [dependencies]
 ahash = "0.8.11"

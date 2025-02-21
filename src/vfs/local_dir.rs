@@ -6,6 +6,7 @@ use std::{
     time::SystemTime,
 };
 
+use ahash::RandomState;
 use async_trait::async_trait;
 use base64ct::{Base64, Encoding};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -23,7 +24,13 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use whirlwind::ShardMap;
 
-use super::{Error, Handle, HandleType, Vfs, options::*};
+use super::{
+    Error,
+    Handle,
+    HandleType,
+    Vfs,
+    options::{FsMetadata, Metadata, OpenFlags},
+};
 use crate::vfs::error::IntoIoError;
 
 pub struct LocalDir {
@@ -45,8 +52,8 @@ impl LocalDir {
             vfs_path,
             root_path,
             root_dir,
-            open_files: ShardMap::with_hasher(Default::default()),
-            open_dirs: ShardMap::with_hasher(Default::default()),
+            open_files: ShardMap::with_hasher(RandomState::default()),
+            open_dirs: ShardMap::with_hasher(RandomState::default()),
         })
     }
 
@@ -213,14 +220,14 @@ impl Vfs for LocalDir {
     async fn read(
         &self,
         handle: &Handle,
-        offset: usize,
+        offset: u64,
         len: usize,
     ) -> Result<Option<Vec<u8>>, Error> {
         if handle.handle_type() == HandleType::File {
             let mut buf: Vec<u8> = Vec::with_capacity(len);
             let mut file = self.get_file(handle).await?;
 
-            file.seek(SeekFrom::Start(offset as u64))
+            file.seek(SeekFrom::Start(offset))
                 .await
                 .into_io_error("failed to seek file")?;
 
@@ -258,7 +265,7 @@ impl Vfs for LocalDir {
                         .metadata(&file_name)
                         .into_io_error("couldn't get file metadata")?;
 
-                    files.push((Utf8PathBuf::from(file_name), Metadata::from(metadata)))
+                    files.push((Utf8PathBuf::from(file_name), Metadata::from(metadata)));
                 }
 
                 Ok(files)
@@ -278,11 +285,11 @@ impl Vfs for LocalDir {
         }
     }
 
-    async fn write(&self, handle: &Handle, offset: usize, data: &[u8]) -> Result<(), Error> {
+    async fn write(&self, handle: &Handle, offset: u64, data: &[u8]) -> Result<(), Error> {
         if handle.handle_type() == HandleType::File {
             let mut file = self.get_file(handle).await?;
 
-            file.seek(SeekFrom::Start(offset as u64))
+            file.seek(SeekFrom::Start(offset))
                 .await
                 .into_io_error("failed to seek file")?;
 

@@ -22,18 +22,22 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    #[must_use]
     pub fn size(&self) -> Option<u64> {
         self.size
     }
 
+    #[must_use]
     pub fn atime(&self) -> Option<SystemTime> {
         self.atime
     }
 
+    #[must_use]
     pub fn mtime(&self) -> Option<SystemTime> {
         self.mtime
     }
 
+    #[must_use]
     pub fn is_directory(&self) -> bool {
         self.is_directory
     }
@@ -46,9 +50,9 @@ impl Metadata {
         attrs.mtime = self.mtime.and_then(from_system_time);
 
         if self.is_directory {
-            attrs.permissions = Some((0o004 << 12) | dir_mode)
+            attrs.permissions = Some((0o004 << 12) | dir_mode);
         } else {
-            attrs.permissions = Some((0o010 << 12) | file_mode)
+            attrs.permissions = Some((0o010 << 12) | file_mode);
         }
 
         attrs
@@ -99,7 +103,12 @@ impl From<cap_std::fs::Metadata> for Metadata {
 
 fn from_system_time(system_time: SystemTime) -> Option<u32> {
     if let Ok(duration) = system_time.duration_since(UNIX_EPOCH) {
-        Some(duration.as_secs() as u32)
+        if let Ok(duration) = duration.as_secs().try_into() {
+            Some(duration)
+        } else {
+            event!(Level::DEBUG, "SystemTime won't fit in a u32");
+            None
+        }
     } else {
         event!(Level::DEBUG, "system time before UNIX EPOCH");
         None
@@ -107,6 +116,7 @@ fn from_system_time(system_time: SystemTime) -> Option<u32> {
 }
 
 fn to_system_time(x: i64) -> SystemTime {
+    #[allow(clippy::cast_sign_loss)]
     if x < 0 {
         SystemTime::UNIX_EPOCH - Duration::from_secs(-x as u64)
     } else {
@@ -149,16 +159,17 @@ pub struct OpenFlags(u32);
 
 bitflags! {
     impl OpenFlags: u32 {
-        const READ = 0x00000001;
-        const WRITE = 0x00000002;
-        const APPEND = 0x00000004;
-        const CREATE = 0x00000008;
-        const TRUNCATE = 0x00000010;
-        const EXCLUDE = 0x00000020;
+        const READ     = 0x0000_0001;
+        const WRITE    = 0x0000_0002;
+        const APPEND   = 0x0000_0004;
+        const CREATE   = 0x0000_0008;
+        const TRUNCATE = 0x0000_0010;
+        const EXCLUDE  = 0x0000_0020;
     }
 }
 
 impl OpenFlags {
+    #[must_use]
     pub fn new() -> Self {
         Self(0)
     }

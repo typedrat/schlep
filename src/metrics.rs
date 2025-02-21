@@ -30,6 +30,7 @@ pub struct Metrics {
     handle: Arc<PrometheusHandle>,
 }
 
+#[allow(clippy::unused_async)]
 impl Metrics {
     pub const SFTP_CLIENTS: &'static str = "schlep_sftp_clients";
     pub const SFTP_READ_DURATION: &'static str = "schlep_sftp_read_duration";
@@ -51,9 +52,10 @@ impl Metrics {
                 metrics::Unit::Seconds,
                 "duration per write operation"
             );
-        })
+        });
     }
 
+    #[must_use]
     pub fn new(config: Config, handle: PrometheusHandle) -> Self {
         Self::register_metrics();
 
@@ -97,7 +99,7 @@ impl Metrics {
             let metrics = handle.render();
             (StatusCode::OK, metrics)
         } else {
-            (StatusCode::NOT_FOUND, "".to_string())
+            (StatusCode::NOT_FOUND, String::new())
         }
     }
 }
