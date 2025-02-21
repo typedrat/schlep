@@ -1,3 +1,5 @@
+#![allow(clippy::field_reassign_with_default)]
+
 use std::{
     os::unix::fs::MetadataExt as _,
     sync::LazyLock,
@@ -9,7 +11,7 @@ use cap_primitives::fs::MetadataExt as _;
 use cap_std::fs::OpenOptions;
 use russh_sftp::protocol::FileAttributes;
 use rustix::fs::{StatVfs, StatVfsMountFlags};
-use tracing::{event, Level};
+use tracing::{Level, event};
 
 #[derive(Debug, Default, Copy, Clone)]
 pub struct Metadata {
@@ -29,7 +31,7 @@ impl Metadata {
     }
 
     pub fn mtime(&self) -> Option<SystemTime> {
-        self.atime
+        self.mtime
     }
 
     pub fn is_directory(&self) -> bool {
@@ -44,9 +46,9 @@ impl Metadata {
         attrs.mtime = self.mtime.and_then(from_system_time);
 
         if self.is_directory {
-            attrs.permissions = Some(0o004_0_000 | dir_mode)
+            attrs.permissions = Some((0o004 << 12) | dir_mode)
         } else {
-            attrs.permissions = Some(0o010_0_000 | file_mode)
+            attrs.permissions = Some((0o010 << 12) | file_mode)
         }
 
         attrs

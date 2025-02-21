@@ -14,9 +14,9 @@
 mod error;
 mod local_dir;
 mod options;
-mod vfs;
+mod vfs_trait;
 
 pub use error::Error;
 pub use local_dir::*;
 pub use options::*;
-pub use vfs::*;
+pub use vfs_trait::*;

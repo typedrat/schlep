@@ -1,8 +1,17 @@
 [package]
 name = "schlep"
 version = "0.1.0"
+description = "Schlep is the less-is-more file server that is designed to integrate with your existing systems, not replace them."
+license = "UNLICENSED"
+repository = "https://github.com/typedrat/schlep"
+categories = ["filesystem", "network-programming"]
+keywords = ["file-server", "sftp"]
 edition = "2024"
 default-run = "schlep"
+
+[lints.clippy]
+cargo = "warn"
+multiple-crate-versions = { level = "allow", priority = 1 }
 
 [dependencies]
 ahash = "0.8.11"

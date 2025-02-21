@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use trait_enum::trait_enum;
 
-use super::{local_dir::LocalDir, Error, FsMetadata, Metadata, OpenFlags};
+use super::{Error, FsMetadata, Metadata, OpenFlags, local_dir::LocalDir};
 
 /// A virtual filesystem backend suitable for exposing over the network using
 /// Schlep.

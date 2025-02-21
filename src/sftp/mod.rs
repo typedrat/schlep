@@ -1,7 +1,7 @@
 mod config;
 mod error;
 mod hash;
-mod sftp;
+mod server;
 mod ssh;
 
 pub use config::Config;

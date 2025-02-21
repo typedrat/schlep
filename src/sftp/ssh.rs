@@ -2,7 +2,7 @@ use std::{
     ffi::OsString,
     future::Future,
     io,
-    io::{read_to_string, ErrorKind},
+    io::{ErrorKind, read_to_string},
     net::SocketAddr,
     os::unix::prelude::OsStringExt,
     pin::Pin,
@@ -15,20 +15,20 @@ use cap_primitives::ambient_authority;
 use cap_std::fs_utf8::Dir;
 use metrics::gauge;
 use russh::{
-    keys::ssh_key::{self, PrivateKey},
-    server::{Auth, Msg, Server, Session},
     Channel,
     ChannelId,
     MethodKind,
     MethodSet,
     Pty,
+    keys::ssh_key::{self, PrivateKey},
+    server::{Auth, Msg, Server, Session},
 };
 use shlex::bytes::Shlex;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tracing::{event, info, instrument, Level};
+use tracing::{Level, event, info, instrument};
 use whirlwind::ShardMap;
 
-use super::{hash, sftp::SftpSession, Config, Error};
+use super::{Config, Error, hash, server::SftpSession};
 use crate::{auth::AuthClient, metrics::Metrics, vfs::VfsSet};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -137,10 +137,7 @@ impl Server for SshServer {
         match error {
             Error::RusshError(russh::Error::IO(err))
                 if err.kind() == ErrorKind::NotConnected
-                    || err.kind() == ErrorKind::UnexpectedEof =>
-            {
-                ()
-            }
+                    || err.kind() == ErrorKind::UnexpectedEof => {}
             Error::RusshError(russh::Error::InactivityTimeout) => (),
 
             _ => event!(
@@ -318,7 +315,7 @@ impl russh::server::Handler for SshSession {
         if let Some(result_future) = self.exec_command(channel_stream, data) {
             session.channel_success(channel_id)?;
 
-            if let Ok(_) = result_future.await {
+            if result_future.await.is_ok() {
                 session.exit_status_request(channel_id, 0)?;
             } else {
                 session.exit_status_request(channel_id, 1)?;

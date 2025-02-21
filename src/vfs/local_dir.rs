@@ -23,7 +23,7 @@ use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use whirlwind::ShardMap;
 
-use super::{options::*, Error, Handle, HandleType, Vfs};
+use super::{Error, Handle, HandleType, Vfs, options::*};
 use crate::vfs::error::IntoIoError;
 
 pub struct LocalDir {
@@ -53,7 +53,7 @@ impl LocalDir {
     async fn get_file(&self, handle: &Handle) -> Result<tokio::fs::File, Error> {
         let vfs_handle = String::from(handle.vfs_handle());
 
-        let file = match self.open_files.get(&vfs_handle).await {
+        match self.open_files.get(&vfs_handle).await {
             Some(file_match) => {
                 let file = file_match
                     .value()
@@ -62,9 +62,7 @@ impl LocalDir {
                 Ok(tokio::fs::File::from_std(file.into_std()))
             }
             None => Err(Error::FileNotFound),
-        };
-
-        file
+        }
     }
 
     async fn get_dir(&self, handle: &Handle) -> Result<Dir, Error> {
@@ -470,7 +468,7 @@ impl Vfs for LocalDir {
             .try_clone()
             .into_io_error("failed to get root directory handle")?;
         let path = path.to_owned();
-        let relative_target = pathdiff::diff_utf8_paths(&target, &path)
+        let relative_target = pathdiff::diff_utf8_paths(target, &path)
             .ok_or_else(|| Error::InvalidPath(PathBuf::from(target)))?;
 
         tokio::task::spawn_blocking(move || {
@@ -631,8 +629,8 @@ impl Vfs for LocalDir {
             .try_clone()
             .into_io_error("failed to get root directory handle")?;
         let path = path.to_owned();
-        let atime = atime.clone().map(convert_system_time);
-        let mtime = mtime.clone().map(convert_system_time);
+        let atime = atime.map(convert_system_time);
+        let mtime = mtime.map(convert_system_time);
 
         tokio::task::spawn_blocking(move || {
             root_dir

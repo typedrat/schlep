@@ -26,7 +26,7 @@ use russh_sftp::protocol::{
     Version,
 };
 use thiserror_ext::AsReport;
-use tracing::{event, instrument, Level};
+use tracing::{Level, event, instrument};
 use whirlwind::ShardSet;
 
 use super::Config;
@@ -38,7 +38,6 @@ use crate::{
 
 pub struct SftpSession {
     config: Config,
-    authenticated_username: String,
     cwd_path: Utf8PathBuf,
     vfs_set: VfsSet,
     version: Option<u32>,
@@ -48,13 +47,12 @@ pub struct SftpSession {
 impl SftpSession {
     pub fn new(
         config: Config,
-        authenticated_username: String,
+        _authenticated_username: String,
         cwd_path: Utf8PathBuf,
         vfs_set: VfsSet,
     ) -> Self {
         Self {
             config,
-            authenticated_username,
             cwd_path,
             vfs_set,
             version: None,
@@ -148,7 +146,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let start_time = SystemTime::now();
 
         let data = handle_match(&self.vfs_set, handle, async |vfs, handle| {
-            tracing::Span::current().record("vfs", &vfs.vfs_root().as_str());
+            tracing::Span::current().record("vfs", vfs.vfs_root().as_str());
 
             match vfs.read(&handle, offset as usize, len as usize).await {
                 Ok(Some(data)) => Ok(Data { id, data }),
@@ -177,7 +175,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let start_time = SystemTime::now();
 
         let status = handle_match(&self.vfs_set, handle, async |vfs, handle| {
-            tracing::Span::current().record("vfs", &vfs.vfs_root().as_str());
+            tracing::Span::current().record("vfs", vfs.vfs_root().as_str());
 
             if let Ok(()) = vfs.write(&handle, offset as usize, data.as_slice()).await {
                 Ok(Status {
@@ -478,8 +476,6 @@ impl russh_sftp::server::Handler for SftpSession {
     }
 
     async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
-        let id = id;
-
         path_match(
             &self.vfs_set,
             &self.cwd_path,
@@ -528,12 +524,10 @@ impl russh_sftp::server::Handler for SftpSession {
     async fn extended(
         &mut self,
         _id: u32,
-        request: String,
+        _request: String,
         _data: Vec<u8>,
     ) -> Result<Packet, Self::Error> {
-        match request.as_str() {
-            _ => Err(StatusCode::OpUnsupported),
-        }
+        Err(StatusCode::OpUnsupported)
     }
 }
 
@@ -561,7 +555,7 @@ where
 {
     let path = Path::new(path);
     if let Ok(Some(absolute_path)) = path.absolutize_from(cwd.as_std_path()).map(|p| {
-        Utf8Path::from_path(&*p)
+        Utf8Path::from_path(&p)
             .to_owned()
             .map(Utf8Path::to_path_buf)
     }) {
@@ -589,7 +583,7 @@ where
     let path2 = Path::new(path2);
 
     let absolute_path1 = match path1.absolutize_from(cwd.as_std_path()).map(|p| {
-        Utf8Path::from_path(&*p)
+        Utf8Path::from_path(&p)
             .to_owned()
             .map(Utf8Path::to_path_buf)
     }) {
@@ -598,7 +592,7 @@ where
     };
 
     let absolute_path2 = match path2.absolutize_from(cwd.as_std_path()).map(|p| {
-        Utf8Path::from_path(&*p)
+        Utf8Path::from_path(&p)
             .to_owned()
             .map(Utf8Path::to_path_buf)
     }) {

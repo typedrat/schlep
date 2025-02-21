@@ -4,7 +4,7 @@ use deadpool::managed;
 use ldap3::{Ldap, LdapConnAsync, LdapConnSettings, LdapError};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{event, instrument, Level};
+use tracing::{Level, event, instrument};
 use url::Url;
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -80,16 +80,16 @@ impl LdapConfig {
         "cn".to_string()
     }
 
-    fn is_default_user_attribute(attribute: &String) -> bool {
-        attribute.as_str() == Self::default_user_attribute()
+    fn is_default_user_attribute(attribute: &str) -> bool {
+        attribute == Self::default_user_attribute()
     }
 
     fn default_ssh_key_attribute() -> String {
         "sshPublicKey".to_string()
     }
 
-    fn is_default_ssh_key_attribute(attribute: &String) -> bool {
-        attribute.as_str() == Self::default_ssh_key_attribute()
+    fn is_default_ssh_key_attribute(attribute: &str) -> bool {
+        attribute == Self::default_ssh_key_attribute()
     }
 
     pub(super) fn connection_manager(&self) -> LdapConnectionManager {

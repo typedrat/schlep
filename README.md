@@ -1,6 +1,6 @@
 # Schlep
 
-Schlep is the less-is-more SFTP server that is designed to integrate with your existing systems, not replace them.
+Schlep is the less-is-more file server that is designed to integrate with your existing systems, not replace them.
 
 ## Status
 

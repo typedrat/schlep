@@ -19,7 +19,7 @@ where
         let path = Path::new(&argument);
         let absolute_path = path.absolutize_from(cwd.as_path())?;
         let absolute_path =
-            Utf8Path::from_path(&*absolute_path).ok_or(anyhow::anyhow!("invalid path"))?;
+            Utf8Path::from_path(&absolute_path).ok_or(anyhow::anyhow!("invalid path"))?;
 
         if let Some(PathMatch { vfs, relative_path }) = vfs_set.resolve_path(absolute_path) {
             let digest = vfs.sha1sum(&relative_path).await?;
@@ -45,7 +45,7 @@ where
         let path = Path::new(&argument);
         let absolute_path = path.absolutize_from(cwd.as_path())?;
         let absolute_path =
-            Utf8Path::from_path(&*absolute_path).ok_or(anyhow::anyhow!("invalid path"))?;
+            Utf8Path::from_path(&absolute_path).ok_or(anyhow::anyhow!("invalid path"))?;
 
         if let Some(PathMatch { vfs, relative_path }) = vfs_set.resolve_path(absolute_path) {
             let digest = vfs.md5sum(&relative_path).await?;
