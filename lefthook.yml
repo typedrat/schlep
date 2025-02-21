@@ -1,7 +1,31 @@
+output:
+  - skips
+  - failure
+  - summary
+
 pre-commit:
   jobs:
     - name: check if schema is up to date
       glob:
         - "Cargo.{toml,lock}"
         - "src/*.rs"
-      run: cargo run --bin schlep-schema 2>/dev/null | mise x jd -- jd -v2 -set schema.json
+      run: cargo run --bin schlep-schema 2>/dev/null | jd -v2 -set schema.json
+
+    - name: fix formatting
+      group:
+        piped: true
+        jobs:
+          - name: format Rust code
+            glob: "*.rs"
+            run: cargo +nightly fmt
+            stage_fixed: true
+
+          - name: format toml files
+            glob: "*.toml"
+            run: RUST_LOG="error" taplo fmt {staged_files}
+            stage_fixed: true
+
+          - name: format yaml files
+            glob: "*.{yml,yaml}"
+            run: yamlfmt {staged_files}
+            stage_fixed: true

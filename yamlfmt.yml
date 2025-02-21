@@ -1,0 +1,6 @@
+formatter:
+  type: basic
+  line_ending: lf
+  retain_line_breaks_single: true
+  max_line_length: 100
+  trim_trailing_whitespace: true
