@@ -11,5 +11,4 @@ linters {
 
 hooks {
     ["pre-commit"] = new { ["fix"] = new Fix {} }
-    ["pre-push"] = new { ["check"] = new Check {} }
 }
