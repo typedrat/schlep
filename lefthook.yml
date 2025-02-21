@@ -1,0 +1,7 @@
+pre-commit:
+  jobs:
+    - name: check if schema is up to date
+      glob:
+        - "Cargo.{toml,lock}"
+        - "src/*.rs"
+      run: cargo run --bin schlep-schema 2>/dev/null | mise x jd -- jd -v2 -set schema.json

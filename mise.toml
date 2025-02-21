@@ -1,5 +1,4 @@
 [tools]
-pkl = "latest"
 rust = "stable"
-hk = "latest"
 jd = "latest"
+lefthook = "latest"
