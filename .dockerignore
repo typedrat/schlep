@@ -1,1 +1,10 @@
+.github/
+assets/
 target/
+.editorconfig
+.gitignore
+hk.pkl
+mise.toml
+README.md
+rustfmt.toml
+schema.json

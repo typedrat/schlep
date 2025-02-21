@@ -1,7 +1,7 @@
 ARG UBUNTU_RELEASE=24.04
 ARG CHISEL_RELEASE=1.1.0
 
-FROM ubuntu:$UBUNTU_RELEASE AS os_builder
+FROM docker.io/library/ubuntu:$UBUNTU_RELEASE AS os_builder
 ARG UBUNTU_RELEASE
 ARG CHISEL_RELEASE
 ARG TARGETARCH
@@ -20,7 +20,7 @@ RUN \
       libgcc-s1_libs \
       libc6_libs
 
-FROM ghcr.io/rust-lang/rust:nightly AS chef
+FROM docker.io/library/rust:1 AS chef
 RUN cargo install cargo-chef
 WORKDIR /app
 
