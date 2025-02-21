@@ -1,10 +1,15 @@
-amends "https://hk.jdx.dev/v0/hk.pkl"
+amends "package://github.com/jdx/hk/releases/download/v0.4.1/hk@0.4.1#/Config.pkl"
 
-min_hk_version = "0.2.4"
+min_hk_version = "0.4.1"
 
-`pre-commit` {
+linters {
     ["check-schema"] {
         glob = new { "Cargo.*"; "*.rs" }
-        fix_all = "cargo run --bin schlep-schema 2>/dev/null > schema.json"
+        fix = "cargo run --bin schlep-schema 2>/dev/null > schema.json"
     }
+}
+
+hooks {
+    ["pre-commit"] = new { ["fix"] = new Fix {} }
+    ["pre-push"] = new { ["check"] = new Check {} }
 }
