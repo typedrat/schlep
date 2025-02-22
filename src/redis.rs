@@ -30,6 +30,6 @@ impl Config {
 
         let builder = Builder::from_config(config);
 
-        builder.build_pool(10)
+        builder.build_pool(self.pool_size)
     }
 }
