@@ -25,6 +25,7 @@ use russh::{
 use shlex::bytes::Shlex;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{Level, event, info, instrument};
+use vec_string::VecString;
 use whirlwind::ShardMap;
 
 use super::{Config, Error, hash, server::SftpSession};
@@ -70,17 +71,20 @@ impl SshServer {
             ..Default::default()
         };
 
+        let socket_addrs = self
+            .config
+            .address
+            .iter()
+            .map(|ip| SocketAddr::new(*ip, self.config.port))
+            .collect::<Vec<_>>();
+
         info!(
-            address = &self.config.address,
-            port = self.config.port,
+            socket_addrs = %socket_addrs.vec_string(),
             "Listening for SFTP connections"
         );
 
-        self.run_on_address(
-            Arc::new(russh_config),
-            (self.config.address.clone(), self.config.port),
-        )
-        .await?;
+        self.run_on_address(Arc::new(russh_config), socket_addrs.as_slice())
+            .await?;
 
         Ok(())
     }

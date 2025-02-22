@@ -29,16 +29,22 @@ cap-fs-ext = { version = "3.4.2", features = ["fs_utf8"] }
 cap-primitives = "3.4.2"
 cap-std = { version = "3.4.2", features = ["fs_utf8"] }
 const-str = "0.6.2"
-deadpool = "0.12.2"
-deadpool-redis = { version = "0.19.0", features = ["serde"] }
-derive_more = { version = "2.0.1", features = ["debug"] }
+deadpool = { version = "0.12.2", features = ["rt_tokio_1"] }
 digest = "0.10.7"
 figment = { version = "0.10.19", features = ["env", "parking_lot", "toml"] }
+fred = { version = "10.0.4", features = [
+    "enable-rustls",
+    "i-redis-json",
+    "metrics",
+    "partial-tracing",
+] }
 fs-set-times = "0.20.2"
 generic-array = { version = "0.14.7" }
 http = "1.2.0"
 humantime-serde = "1.1.1"
-ldap3 = { version = "0.11.5", default-features = false, features = ["tls-rustls"] }
+ldap3 = { git = "https://github.com/inejge/ldap3.git", default-features = false, features = [
+    "tls-rustls",
+] }
 md-5 = "0.10.6"
 metrics = "0.24.1"
 metrics-exporter-prometheus = { version = "0.16.2", default-features = false, features = [
@@ -52,14 +58,6 @@ parking_lot = "0.12.3"
 path-absolutize = "3.1.1"
 pathdiff = { version = "0.2.3", features = ["camino"] }
 rand = "0.8.5"
-redis = { version = "0.28.2", features = [
-    "aio",
-    "ahash",
-    "tokio-comp",
-    "tokio-rustls-comp",
-    "json",
-] }
-redis-macros = { version = "0.5.0", default-features = false, features = ["macros"] }
 russh = "0.50.2"
 russh-sftp = "2.0.8"
 rustix = { version = "0.38.44", features = ["fs"] }
@@ -85,6 +83,7 @@ tracing-subscriber = { version = "0.3.19", features = [
 ] }
 trait_enum = "0.5.0"
 url = { version = "2.5.4", features = ["serde"] }
+vec-string = "0.2.1"
 whirlwind = "0.1.1"
 
 [build-dependencies]

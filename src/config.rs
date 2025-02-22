@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{auth, metrics, redis, sftp, vfs};
 
-#[derive(derive_more::Debug, Serialize, Deserialize, JsonSchema, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Config {
     /// Configuration for Schlep's SFTP server.
     pub sftp: sftp::Config,
@@ -20,7 +20,7 @@ pub struct Config {
     pub fs: vfs::Config,
 
     /// Configuration for a Redis-compatible cache server.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub redis: Option<redis::Config>,
 
     pub metrics: metrics::Config,

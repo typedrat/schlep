@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -9,8 +12,8 @@ use serde_inline_default::serde_inline_default;
 #[serde(rename = "sftp_config")]
 pub struct Config {
     /// The address for the SFTP sftp to listen on.
-    #[serde_inline_default("localhost".to_string())]
-    pub address: String,
+    #[serde(default = "Config::default_address")]
+    pub address: Vec<IpAddr>,
 
     /// The port for the SFTP sftp to listen on.
     #[serde_inline_default(2222)]
@@ -33,4 +36,13 @@ pub struct Config {
 
     #[serde_inline_default(0o777)]
     pub default_dir_mode: u32,
+}
+
+impl Config {
+    fn default_address() -> Vec<IpAddr> {
+        vec![
+            IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+            IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
+        ]
+    }
 }

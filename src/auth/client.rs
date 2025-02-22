@@ -2,9 +2,8 @@ use deadpool::{
     Runtime,
     managed::{self, PoolError},
 };
+use fred::prelude::*;
 use ldap3::{Scope, SearchEntry, ldap_escape};
-use redis::AsyncCommands;
-use redis_macros::{FromRedisValue, ToRedisArgs};
 use russh::keys::PublicKey;
 use serde::{Deserialize, Serialize};
 use tracing::{Level, event, instrument};
@@ -26,7 +25,7 @@ pub struct AuthClient {
     ldap_pool: managed::Pool<LdapConnectionManager>,
 }
 
-pub type Result<T> = std::result::Result<T, AuthError>;
+pub type Result<T, E = AuthError> = std::result::Result<T, E>;
 
 impl AuthClient {
     pub fn new(config: Config, redis_pool: Option<RedisPool>) -> Result<Self> {
@@ -50,18 +49,8 @@ impl AuthClient {
 
     #[instrument(skip_all, err)]
     async fn read_user_cache(&self, cache_key: &str) -> Result<Option<UserInfo>> {
-        if let Some(redis_pool) = self.redis_pool.as_ref() {
-            let mut conn = match redis_pool.get().await {
-                Ok(conn) => conn,
-                Err(PoolError::Timeout(_)) => return Err(AuthError::RedisConnectionTimeout),
-                Err(PoolError::Backend(err)) => {
-                    return Err(err.into_redis_error("failed to get connection"));
-                }
-                Err(PoolError::PostCreateHook(err)) => return Err(AuthError::from(err)),
-                Err(_) => return Ok(None),
-            };
-
-            match conn.get::<_, Option<UserInfo>>(&cache_key).await {
+        if let Some(conn) = self.redis_pool.clone() {
+            match conn.get(cache_key).await {
                 Ok(Some(user)) => {
                     event!(Level::INFO, "successfully got user from cache");
                     Ok(Some(user))
@@ -79,23 +68,15 @@ impl AuthClient {
 
     #[instrument(skip_all, err)]
     async fn write_user_cache(&self, cache_key: &str, user: &UserInfo) -> Result<()> {
-        if let Some(redis_pool) = self.redis_pool.as_ref() {
-            let mut conn = match redis_pool.get().await {
-                Ok(conn) => conn,
-                Err(PoolError::Timeout(_)) => return Err(AuthError::RedisConnectionTimeout),
-                Err(PoolError::Backend(err)) => {
-                    return Err(err.into_redis_error("failed to get connection"));
-                }
-                Err(PoolError::PostCreateHook(err)) => return Err(AuthError::from(err)),
-                Err(_) => return Ok(()),
-            };
-
-            conn.set::<_, _, ()>(&cache_key, &user)
-                .await
-                .into_redis_error("failed to set LDAP user cache data")?;
-            conn.expire::<_, ()>(&cache_key, 5 * 60)
-                .await
-                .into_redis_error("failed to set LDAP user cache expiration")?;
+        if let Some(conn) = self.redis_pool.clone() {
+            if let Ok(user_json) = serde_json::to_string(user) {
+                conn.json_set::<(), _, _, _>(cache_key, "$", user_json, None)
+                    .await
+                    .into_redis_error("failed to set LDAP user cache data")?;
+                conn.expire::<(), _>(cache_key, 5 * 60, None)
+                    .await
+                    .into_redis_error("failed to set LDAP user cache expiration")?;
+            }
         }
 
         Ok(())
@@ -178,8 +159,8 @@ impl AuthClient {
         }
     }
 
-    #[instrument(skip(self, _password), err)]
-    pub async fn authenticate_password(&self, username: &str, _password: &str) -> Result<bool> {
+    #[instrument(skip(self, _password), fields(username = _username), err)]
+    pub async fn authenticate_password(&self, _username: &str, _password: &str) -> Result<bool> {
         todo!()
     }
 
@@ -196,9 +177,15 @@ impl AuthClient {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, FromRedisValue, ToRedisArgs)]
+#[derive(Debug, Serialize, Deserialize)]
 struct UserInfo {
     username: String,
     dn: String,
     public_keys: Vec<PublicKey>,
+}
+
+impl FromValue for UserInfo {
+    fn from_value(value: Value) -> Result<Self, Error> {
+        serde_json::from_value(FromValue::from_value(value)?).map_err(Into::<Error>::into)
+    }
 }
