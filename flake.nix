@@ -34,7 +34,9 @@
 
       inherit (pkgs) lib;
 
-      craneLib = (crane.mkLib pkgs).overrideToolchain fenix.packages.${system}.stable.completeToolchain;
+      craneLib =
+        (crane.mkLib pkgs).overrideToolchain
+        fenix.packages.${system}.stable.completeToolchain;
       src = craneLib.cleanCargoSource ./.;
 
       # Common arguments can be set here to avoid repeating them later
