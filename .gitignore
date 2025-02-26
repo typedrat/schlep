@@ -4,3 +4,4 @@
 /schlep.toml
 /keys/*
 Cargo.svg
+.direnv/

@@ -3,17 +3,20 @@ use anyhow::Result;
 use vergen_gitcl::*;
 
 fn main() -> Result<()> {
-    let build = BuildBuilder::all_build()?;
     let cargo = CargoBuilder::all_cargo()?;
-    let git = GitclBuilder::all_git()?;
     let rustc = RustcBuilder::all_rustc()?;
 
-    Emitter::default()
-        .add_instructions(&build)?
+    let mut emitter = Emitter::default();
+    emitter
         .add_instructions(&cargo)?
         .add_instructions(&git)?
-        .add_instructions(&rustc)?
-        .emit()?;
+        .add_instructions(&rustc)?;
+
+    if let Ok(git) = GitclBuilder::default().sha(false).build() {
+        emitter.add_instructions(&git)?;
+    }
+
+    emitter.emit()?;
 
     Ok(())
 }

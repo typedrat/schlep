@@ -6,12 +6,13 @@ pub struct VersionInfo {
     pub version: &'static str,
     pub rustc: RustcInfo,
     pub build: BuildInfo,
-    pub git: GitInfo,
+    pub git_commit_sha: &'static str,
 }
 
 impl VersionInfo {
     pub const NAME: HeaderName = HeaderName::from_static("name");
     pub const VERSION: HeaderName = HeaderName::from_static("version");
+    pub const GIT_COMMIT_SHA: HeaderName = HeaderName::from_static("git-commit-sha");
 
     pub fn as_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
@@ -20,7 +21,10 @@ impl VersionInfo {
         headers.insert(Self::VERSION, HeaderValue::from_static(self.version));
         headers.extend(self.rustc.as_headers().drain());
         headers.extend(self.build.as_headers().drain());
-        headers.extend(self.git.as_headers().drain());
+        headers.insert(
+            Self::GIT_COMMIT_SHA,
+            HeaderValue::from_static(self.git_commit_sha),
+        );
 
         headers
     }
@@ -60,14 +64,12 @@ pub struct BuildInfo {
     pub target: &'static str,
     pub debug: bool,
     pub opt_level: &'static str,
-    pub timestamp: &'static str,
 }
 
 impl BuildInfo {
     pub const TARGET: HeaderName = HeaderName::from_static("build-target");
     pub const DEBUG: HeaderName = HeaderName::from_static("build-debug");
     pub const OPT_LEVEL: HeaderName = HeaderName::from_static("build-opt-level");
-    pub const TIMESTAMP: HeaderName = HeaderName::from_static("build-timestamp");
 
     fn as_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
@@ -75,33 +77,6 @@ impl BuildInfo {
         headers.insert(Self::TARGET, HeaderValue::from_static(self.target));
         headers.insert(Self::DEBUG, HeaderValue::from_static(unbool(self.debug)));
         headers.insert(Self::OPT_LEVEL, HeaderValue::from_static(self.opt_level));
-        headers.insert(Self::TIMESTAMP, HeaderValue::from_static(self.timestamp));
-
-        headers
-    }
-}
-
-#[derive(Debug)]
-pub struct GitInfo {
-    pub branch: &'static str,
-    pub commit: &'static str,
-    pub is_dirty: bool,
-}
-
-impl GitInfo {
-    pub const BRANCH: HeaderName = HeaderName::from_static("git-branch");
-    pub const COMMIT: HeaderName = HeaderName::from_static("git-commit");
-    pub const IS_DIRTY: HeaderName = HeaderName::from_static("git-is-dirty");
-
-    fn as_headers(&self) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-
-        headers.insert(Self::BRANCH, HeaderValue::from_static(self.branch));
-        headers.insert(Self::COMMIT, HeaderValue::from_static(self.commit));
-        headers.insert(
-            Self::IS_DIRTY,
-            HeaderValue::from_static(unbool(self.is_dirty)),
-        );
 
         headers
     }
@@ -123,11 +98,6 @@ pub const VERSION_INFO: VersionInfo = VersionInfo {
         target: env!("VERGEN_CARGO_TARGET_TRIPLE"),
         debug: const_str::parse!(env!("VERGEN_CARGO_DEBUG"), bool),
         opt_level: env!("VERGEN_CARGO_OPT_LEVEL"),
-        timestamp: env!("VERGEN_BUILD_TIMESTAMP"),
     },
-    git: GitInfo {
-        branch: env!("VERGEN_GIT_BRANCH"),
-        commit: env!("VERGEN_GIT_SHA"),
-        is_dirty: const_str::parse!(env!("VERGEN_GIT_DIRTY"), bool),
-    },
+    git_commit_sha: env!("VERGEN_GIT_SHA"),
 };
